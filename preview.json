@@ -1,9 +1,9 @@
 {
-  "status": "online",
+  "status": "offline",
   "url": "https://porter-experiment-men-biotechnology.trycloudflare.com",
   "sourceCommit": "b9ecf0607f76323512b9883a440bdb9e4186e0c6",
   "startedAt": "2026-10-08T15:13:58.011Z",
   "expiresAt": "2026-10-08T15:43:58.011Z",
-  "updatedAt": "2026-10-08T15:13:58.011Z",
+  "updatedAt": "2026-10-08T15:43:59.935Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
