@@ -66,6 +66,10 @@ SQLite ของเครื่องพัฒนาใช้บน Vercel ไ�
 
 เว็บในเครื่องเปิดให้ทีมภายนอกได้ผ่าน tunnel ที่ forward เฉพาะพอร์ต 3000 ลิงก์จะอยู่ได้เฉพาะช่วงที่ cloud machine, แอป และ tunnel ทำงาน ลิงก์นี้ไม่ใช่ hosting ถาวร เก็บ URL ที่บริการออกให้จริงเท่านั้น ไม่ใช้ localhost เป็นลิงก์สำหรับผู้ใช้ภายนอก
 
+มี GitHub Actions workflow **Temporary website preview** สำหรับ repository นี้ โดย build/test แอปบน runner แล้วเปิด Cloudflare tunnel **30 นาที** ตรวจหน้าเว็บและ CRUD ผ่านลิงก์สาธารณะก่อนเผยแพร่ URL ที่ [preview-live/preview.json](https://github.com/CosMD-BBB/Task_Management/blob/preview-live/preview.json) รันใหม่ได้จาก Actions → Temporary website preview → Run workflow การเปลี่ยน source บน main จะเริ่มรอบใหม่และปิดรอบเก่า
+
+ฐานข้อมูลของ preview runner แยกจากเครื่องพัฒนาและถูกลบเมื่อจบรอบ จึงควรใช้ข้อมูลทดลองเท่านั้น เว็บไซต์ถาวรต้องใช้ Vercel + Postgres ตามขั้นตอนด้านบน การเปิด preview ต้องมี GitHub Actions และสิทธิ์ workflow เขียน branch สำหรับ metadata
+
 ## ก่อนใช้จริงกับทีม
 
 ระบบนี้มี Login ด้วยรหัสผ่านและกำหนดสิทธิ์รายโปรเจกต์แล้ว แต่ยังไม่มีอีเมลยืนยันบัญชี/รีเซ็ตรหัสผ่าน, OAuth, การอัปโหลดไฟล์, comment thread, realtime synchronization หรือการแจ้งเตือนทางอีเมล ต้องกำหนดระบบสำรองข้อมูลและนโยบายสมัครสมาชิกก่อนใช้งานในองค์กร

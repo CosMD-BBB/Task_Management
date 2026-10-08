@@ -1,0 +1,85 @@
+name: Temporary website preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/**'
+      - 'src/**'
+      - 'server/**'
+      - 'api/**'
+      - 'public/**'
+      - 'package*.json'
+      - 'index.html'
+      - 'vite.config.js'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: room-temporary-preview
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install, test and build
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+      - name: Start the application and verified tunnel
+        id: tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 2 --connect-timeout 10 --max-time 90 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.10.0/cloudflared-linux-amd64 \
+            --output /tmp/room-cloudflared
+          printf '%s  %s\n' d33ff2d14475178d2012c2c56beba87389ac5ded27649519f198a7d3134a99db /tmp/room-cloudflared | sha256sum --check -
+          chmod +x /tmp/room-cloudflared
+          npm start > /tmp/room-app.log 2>&1 &
+          printf '%s\n' "$!" > /tmp/room-app.pid
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:3000/api/health > /tmp/room-health.json; then break; fi
+            sleep 2
+          done
+          node -e "if(JSON.parse(require('fs').readFileSync('/tmp/room-health.json')).status!=='ok')process.exit(1)"
+          /tmp/room-cloudflared --no-autoupdate tunnel --url http://127.0.0.1:3000 --protocol http2 > /tmp/room-tunnel.log 2>&1 &
+          printf '%s\n' "$!" > /tmp/room-tunnel.pid
+          for attempt in {1..30}; do
+            preview_url=$(sed -nE 's/.*(https:\/\/[a-z0-9-]+\.trycloudflare\.com).*/\1/p' /tmp/room-tunnel.log | head -n 1)
+            if [ -n "$preview_url" ]; then break; fi
+            sleep 2
+          done
+          if [ -z "${preview_url:-}" ]; then cat /tmp/room-tunnel.log; exit 1; fi
+          printf 'url=%s\n' "$preview_url" >> "$GITHUB_OUTPUT"
+          node .github/scripts/check-preview.mjs "$preview_url"
+          PREVIEW_URL="$preview_url" PREVIEW_STATUS=online node .github/scripts/publish-preview.mjs
+          printf '### Room is online for 30 minutes\n\n%s\n\nThis is a temporary SQLite instance. Use the demo button; data does not migrate to production.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep preview available for thirty minutes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for minute in {1..30}; do
+            kill -0 "$(cat /tmp/room-app.pid)"
+            kill -0 "$(cat /tmp/room-tunnel.pid)"
+            sleep 60
+          done
+      - name: Close this preview
+        if: always()
+        env:
+          PREVIEW_URL: ${{ steps.tunnel.outputs.url }}
+          PREVIEW_STATUS: offline
+        run: |
+          if [ -n "$PREVIEW_URL" ]; then node .github/scripts/publish-preview.mjs; fi
+          if [ -f /tmp/room-tunnel.pid ]; then kill "$(cat /tmp/room-tunnel.pid)" || true; fi
+          if [ -f /tmp/room-app.pid ]; then kill "$(cat /tmp/room-app.pid)" || true; fi
