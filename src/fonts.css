@@ -1,0 +1,11 @@
+@font-face {
+  font-family: 'Manrope';
+  src: url('/fonts/Manrope-Variable.ttf') format('truetype');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* CosMD's Thai face is Sukhumvit Set / Sukhumvit Thai. Its actual brand files
+   must be supplied before it can be served to devices without that font.
+   No unrelated font is registered under the Sukhumvit name. */

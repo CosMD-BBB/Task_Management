@@ -1,22 +1,25 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { BarChart3, Camera, Check, ChevronDown, Clapperboard, FileText, Globe, Image, Images, LoaderCircle, Music2, Plus, Search, ShoppingBag, X } from 'lucide-react';
+import { BarChart3, Camera, Check, ChevronDown, Clapperboard, Facebook, FileText, Globe, Image, Images, Instagram, LoaderCircle, Music2, Plus, Search, ShoppingBag, X, Youtube } from 'lucide-react';
+import { getTagAppearance, tagAppearanceStyle } from '../tagAppearance';
 import './multi-select.css';
 
 const initials = (name = '') => name.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 2).join('').toUpperCase();
 
 function OptionMark({ option, variant }) {
   if (variant === 'assignee') return <span className="tm-multi-avatar" style={{ background: option.color || '#788aa7' }}>{initials(option.label)}</span>;
-  return <span className="tm-multi-color-dot" style={{ background: option.color || '#7c69bd' }} />;
+  return <ChoiceIcon option={option} variant={variant} />;
 }
 
 function ChoiceIcon({ option, variant }) {
-  const icons = { Video: Clapperboard, VDO: Clapperboard, Reel: Clapperboard, 'Photo album': Images, Infographic: BarChart3, 'Single Post': Image, Story: Camera, Blog: FileText, 'ขายของ': ShoppingBag, Instagram: Camera, TikTok: Music2, YouTube: Clapperboard, Website: Globe };
+  const icons = { Video: Clapperboard, VDO: Clapperboard, Reel: Clapperboard, 'Photo album': Images, Infographic: BarChart3, 'Single Post': Image, Story: Camera, Blog: FileText, 'ขายของ': ShoppingBag, Facebook, Instagram, TikTok: Music2, YouTube: Youtube, Website: Globe };
   const Icon = icons[option.value] || (variant === 'channel' ? Globe : FileText);
-  return <span className="tm-multi-choice-icon" aria-hidden="true"><Icon size={18} /></span>;
+  return <span className="tm-multi-choice-icon" data-platform={variant === 'channel' ? option.value.toLocaleLowerCase() : undefined} aria-hidden="true">{variant === 'channel' && option.value.toLocaleLowerCase() === 'line' ? <b>LINE</b> : <Icon size={18} />}</span>;
 }
 
 export default function MultiSelect({ label, title, description, display = 'popup', value = [], options = [], onChange, onCreate, disabled = false, readonly = false, variant = 'tag', placeholder = 'เลือกตัวเลือก', onPendingChange, maxSelected = Infinity }) {
   const inline = display === 'inline';
+  const tagKind = variant === 'channel' ? 'channel' : 'contentType';
+  const optionStyle = (option) => variant === 'assignee' ? { '--chip-color': option.color || '#788aa7' } : tagAppearanceStyle(option.value, tagKind);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [newOption, setNewOption] = useState('');
@@ -98,7 +101,7 @@ export default function MultiSelect({ label, title, description, display = 'popu
     try {
       const result = await onCreate(newValue);
       if (!mountedRef.current) return;
-      const persistedOption = result?.value ? result : { value: newValue, label: newValue, color: variant === 'channel' ? '#477b9e' : '#7c69bd' };
+      const persistedOption = result?.value ? result : { value: newValue, label: newValue, color: getTagAppearance(newValue, tagKind).color };
       setCreatedOptions((current) => [...current, persistedOption]);
       if (!valueRef.current.includes(persistedOption.value)) onChange?.([...valueRef.current, persistedOption.value]);
       setSearch('');
@@ -150,7 +153,7 @@ export default function MultiSelect({ label, title, description, display = 'popu
   }
 
   const selectedChips = <div className="tm-multi-selected" aria-label={`Selected ${label}`}>
-    {selectedOptions.map((option) => <span className="tm-multi-chip" key={option.value} style={{ '--chip-color': option.color || (variant === 'channel' ? '#477b9e' : '#7c69bd') }}>
+    {selectedOptions.map((option) => <span className="tm-multi-chip" key={option.value} style={optionStyle(option)} data-tag-value={variant === 'assignee' ? undefined : option.value} data-tag-kind={variant === 'assignee' ? undefined : tagKind}>
       <OptionMark option={option} variant={variant} /><span className="tm-multi-chip-label" title={option.label}>{option.label}</span>
       {!readonly && <button type="button" aria-label={`Remove ${option.label} from ${label}`} disabled={disabled || creating} onClick={() => toggle(option)}><X size={13} /></button>}
     </span>)}
@@ -167,7 +170,7 @@ export default function MultiSelect({ label, title, description, display = 'popu
       {search && !creating && <button type="button" aria-label={`Clear search ${label}`} onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={14} /></button>}
     </label>
     <div className="tm-multi-inline-options">
-      {filteredOptions.map((option) => <label className={`tm-multi-choice ${value.includes(option.value) ? 'tm-multi-choice-selected' : ''}`} key={option.value} style={{ '--chip-color': option.color || '#7c69bd' }}>
+      {filteredOptions.map((option) => <label className={`tm-multi-choice ${value.includes(option.value) ? 'tm-multi-choice-selected' : ''}`} key={option.value} style={optionStyle(option)} data-tag-value={option.value} data-tag-kind={tagKind}>
         <input type="checkbox" aria-label={option.label} checked={value.includes(option.value)} disabled={readonly || disabled || creating || (atLimit && !value.includes(option.value))} onChange={() => toggle(option)} />
         <ChoiceIcon option={option} variant={variant} /><span className="tm-multi-choice-text"><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
         <span className="tm-multi-checkbox"><Check size={13} strokeWidth={3} /></span>
@@ -199,7 +202,7 @@ export default function MultiSelect({ label, title, description, display = 'popu
         {search && !creating && <button type="button" aria-label={`Clear search ${label}`} onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={12} /></button>}
       </label>
       <div className="tm-multi-options">
-        {filteredOptions.map((option) => <label className={`tm-multi-option ${value.includes(option.value) ? 'tm-multi-option-selected' : ''}`} key={option.value}>
+        {filteredOptions.map((option) => <label className={`tm-multi-option ${value.includes(option.value) ? 'tm-multi-option-selected' : ''}`} key={option.value} style={optionStyle(option)}>
           <input type="checkbox" aria-label={option.label} checked={value.includes(option.value)} disabled={disabled || creating || (atLimit && !value.includes(option.value))} onChange={() => toggle(option)} />
           <span className="tm-multi-checkbox"><Check size={11} strokeWidth={3} /></span><OptionMark option={option} variant={variant} />
           <span className="tm-multi-option-text"><span>{option.label}</span>{option.description && <small>{option.description}</small>}</span>

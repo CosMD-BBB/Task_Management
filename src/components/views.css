@@ -1,31 +1,8 @@
 .tm-views {
   --status-color-weight: 70%;
-  --tag-purple: #6c43b3;
-  --tag-purple-bg: #efe9fb;
-  --tag-violet: #8544a5;
-  --tag-violet-bg: #f3eafa;
-  --tag-pink: #b33f70;
-  --tag-pink-bg: #fbe8f1;
-  --tag-blue: #216d94;
-  --tag-blue-bg: #e3f1f9;
-  --channel-facebook: #285fae;
-  --channel-facebook-bg: #e8f0ff;
-  --channel-instagram: #a23881;
-  --channel-instagram-bg: #f7eaf3;
-  --channel-youtube: #b43939;
-  --channel-youtube-bg: #fceaea;
   width: 100%; min-width: 0; color: var(--text); font-size: 13px;
 }
-html[data-theme='dark'] .tm-views {
-  --status-color-weight: 55%;
-  --tag-purple: #c0a2ff; --tag-purple-bg: #342948;
-  --tag-violet: #ddb2f7; --tag-violet-bg: #392a44;
-  --tag-pink: #f2a0c1; --tag-pink-bg: #442837;
-  --tag-blue: #91d0f0; --tag-blue-bg: #243c4b;
-  --channel-facebook: #9bbbff; --channel-facebook-bg: #283751;
-  --channel-instagram: #efa5d7; --channel-instagram-bg: #412c3c;
-  --channel-youtube: #f9aaaa; --channel-youtube-bg: #462d30;
-}
+html[data-theme='dark'] .tm-views { --status-color-weight: 55%; }
 .tm-views button, .tm-views select { font: inherit; }
 .tm-views button { cursor: pointer; }
 .tm-views button:disabled { cursor: default; opacity: .55; }
@@ -90,15 +67,9 @@ html[data-theme='dark'] .tm-views {
 .tm-task-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-width: 210px; white-space: normal; }
 .tm-due { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .tm-due-overdue { color: var(--danger, #c84352); }
-.tm-tag, .tm-channel { display: inline-flex; align-items: center; max-width: 180px; padding: 4px 7px; border-radius: 5px; font-size: 11px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tm-tag-purple { color: var(--tag-purple); background: var(--tag-purple-bg); }
-.tm-tag-violet { color: var(--tag-violet); background: var(--tag-violet-bg); }
-.tm-tag-pink { color: var(--tag-pink); background: var(--tag-pink-bg); }
-.tm-tag-blue { color: var(--tag-blue); background: var(--tag-blue-bg); }
-.tm-channel { border: 1px solid var(--border); background: var(--surface-3); color: var(--text); }
-.tm-channel-facebook { color: var(--channel-facebook); background: var(--channel-facebook-bg); border-color: transparent; }
-.tm-channel-instagram { color: var(--channel-instagram); background: var(--channel-instagram-bg); border-color: transparent; }
-.tm-channel-youtube { color: var(--channel-youtube); background: var(--channel-youtube-bg); border-color: transparent; }
+.tm-tag, .tm-channel { display: inline-flex; position: relative; align-items: center; max-width: 180px; padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--tag-color) 68%, var(--tag-foreground)); border-radius: 5px; background: var(--tag-background); color: var(--tag-foreground); font-size: 11px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-channel { padding-left: 10px; }
+.tm-channel::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tag-accent); pointer-events: none; }
 .tm-tag-editor { display: block; width: 100%; min-height: 30px; border: 1px solid transparent; border-radius: 6px; padding: 4px 0; background: transparent; color: var(--text); text-align: left; }
 .tm-tag-editor:hover { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 .tm-tag-editor-values { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

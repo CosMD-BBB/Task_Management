@@ -4,6 +4,7 @@ import {
   Flag, Link2, LoaderCircle, Plus, Trash2, UserRound, X,
 } from 'lucide-react';
 import MultiSelect from './MultiSelect';
+import { getTagAppearance } from '../tagAppearance';
 import './editor.css';
 
 const STATUS_OPTIONS = [
@@ -26,13 +27,7 @@ const CHANNEL_HELP = { Facebook: 'เพจและฟีด', Instagram: 'โ�
 const makeId = () => globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const uniqueValues = (values) => [...new Set(values.filter((value) => typeof value === 'string').map((value) => value.trim()).filter(Boolean))];
 const normalizeValues = (values, legacyValue) => uniqueValues(Array.isArray(values) ? values : legacyValue ? [legacyValue] : []);
-const tagColor = (value, kind) => {
-  const namedColors = { Facebook: '#3873cf', Instagram: '#bd658f', TikTok: '#556073', YouTube: '#d75d62', LINE: '#529866', Website: '#538bb1', Video: '#c5677d', VDO: '#c5677d', Infographic: '#408fac', 'Photo album': '#9162b9' };
-  if (namedColors[value]) return namedColors[value];
-  const palette = kind === 'channel' ? ['#477b9e', '#547c94', '#6176b1', '#508e8c'] : ['#8262ad', '#aa6a8e', '#6e80b8', '#978046'];
-  const hash = Array.from(value).reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  return palette[hash % palette.length];
-};
+const tagColor = (value, kind) => getTagAppearance(value, kind).color;
 
 function initialDraft(task, initialValues, project) {
   const values = task || initialValues || {};

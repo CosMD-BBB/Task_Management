@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowUp, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, Flag, GripVertical, Link2, ListTodo, MessageSquare, Plus, X } from 'lucide-react';
+import { tagAppearanceStyle } from '../tagAppearance.js';
 import './views.css';
 
 export const STATUSES = [
@@ -67,14 +68,12 @@ function Priority({ value, compact = false }) {
 
 function ContentTag({ value }) {
   if (!value) return <span className="tm-muted">—</span>;
-  const token = value.toLowerCase();
-  const color = token.includes('video') || token.includes('vdo') || token.includes('reel') || token.includes('วิดีโอ') ? 'pink' : token.includes('photo') || token.includes('album') || token.includes('ภาพ') ? 'violet' : token.includes('info') || token.includes('อินโฟ') ? 'blue' : 'purple';
-  return <span className={`tm-tag tm-tag-${color}`}>{value}</span>;
+  return <span className="tm-tag" style={tagAppearanceStyle(value, 'contentType')} data-tag-kind="contentType" data-tag-value={value}>{value}</span>;
 }
 
 function ChannelTag({ value }) {
   if (!value) return <span className="tm-muted">—</span>;
-  return <span className={`tm-channel tm-channel-${value.toLowerCase().replace(/[^a-z]/g, '')}`}>{value}</span>;
+  return <span className="tm-channel" style={tagAppearanceStyle(value, 'channel')} data-tag-kind="channel" data-tag-value={value}>{value}</span>;
 }
 
 function TaskTags({ task, kind }) {
