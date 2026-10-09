@@ -1,9 +1,9 @@
 {
-  "status": "offline",
-  "url": "https://flow-correlation-monetary-olympic.trycloudflare.com",
-  "sourceCommit": "ee47cc2f13d263179041708c91882b2acf5c62ff",
-  "startedAt": "2026-10-09T03:53:24.321Z",
-  "expiresAt": "2026-10-09T04:23:24.321Z",
-  "updatedAt": "2026-10-09T04:23:25.808Z",
+  "status": "online",
+  "url": "https://thinking-mailto-sydney-minerals.trycloudflare.com",
+  "sourceCommit": "1dc9e9c9332da8fce662765ff28a3e6a036cb2ec",
+  "startedAt": "2026-10-09T04:29:17.064Z",
+  "expiresAt": "2026-10-09T04:59:17.064Z",
+  "updatedAt": "2026-10-09T04:29:17.064Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
