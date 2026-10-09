@@ -1,9 +1,9 @@
 {
-  "status": "online",
+  "status": "offline",
   "url": "https://thinking-mailto-sydney-minerals.trycloudflare.com",
   "sourceCommit": "1dc9e9c9332da8fce662765ff28a3e6a036cb2ec",
   "startedAt": "2026-10-09T04:29:17.064Z",
   "expiresAt": "2026-10-09T04:59:17.064Z",
-  "updatedAt": "2026-10-09T04:29:17.064Z",
+  "updatedAt": "2026-10-09T04:59:18.527Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
