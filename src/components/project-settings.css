@@ -1,0 +1,33 @@
+.project-cover-setting { margin:20px 0; }
+.project-setting-label { display:block; font-size:12px; font-weight:500; margin-bottom:10px; }
+.cover-preview { height:140px; border-radius:9px; border:1px dashed #d6e3d8; overflow:hidden; display:flex; flex-direction:column; gap:10px; align-items:center; justify-content:center; color:#94ac98; }
+.cover-preview span { font-size:10px; }
+.cover-preview.has-image { border-style:solid; }
+.cover-preview img { width:100%; height:100%; object-fit:cover; }
+.cover-buttons { display:flex; gap:12px; align-items:center; margin:12px 0; }
+.upload-cover { position:relative; overflow:hidden; flex-direction:row; min-height:32px; font-size:10px; cursor:pointer; }
+.upload-cover input { position:absolute; inset:0; opacity:0; cursor:pointer; padding:0; border:none; width:100%; }
+.upload-cover.disabled { opacity:.5; cursor:not-allowed; }
+.cover-buttons .text-button { margin-top:0; }
+.cover-url-label { font-size:10px; color:#8c9a85; }
+.project-option-catalog { margin:18px 0 23px; }
+.project-option-catalog h4 { margin:0 0 10px; font-size:11px; font-weight:600; }
+.project-option-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.project-option-chips>span { display:flex; align-items:center; gap:6px; border:1px solid #dceade; background:#f0f7ef; color:#548066; border-radius:5px; font-size:10px; padding:5px 8px; }
+.project-option-chips button { display:flex; align-items:center; border:0; background:transparent; color:#85a08a; padding:0; }
+.project-option-chips small { color:#99a691; font-size:10px; }
+.project-option-add { display:flex; gap:8px; margin-top:12px; }
+.project-option-add>input { flex:1; min-width:0; padding:9px; border:1px solid var(--border); border-radius:6px; font-size:11px; }
+.project-option-add .secondary { min-height:32px; font-size:10px; padding:7px 9px; }
+.project-cover-banner { display:block; position:relative; width:100%; height:150px; padding:0; border:0; border-radius:12px; overflow:hidden; margin:22px 0 0; background:#eff5ef; }
+.project-cover-banner img { width:100%; height:100%; object-fit:cover; display:block; }
+.project-cover-banner>span { position:absolute; right:13px; bottom:11px; display:flex; align-items:center; gap:5px; border:1px solid #ffffff75; border-radius:6px; padding:6px 8px; font-size:9px; color:#fff; background:#26332a5c; backdrop-filter:blur(5px); }
+.editable-project-name { background:transparent; border:0; padding:0; display:flex; align-items:center; gap:10px; font:inherit; letter-spacing:inherit; color:inherit; text-align:left; }
+.editable-project-name svg { color:#abb6a3; opacity:.65; }
+.editable-project-name:hover svg { color:var(--accent); opacity:1; }
+.project-icon img,.heading-icon img { width:100%; height:100%; object-fit:cover; border-radius:inherit; }
+.notification-count { position:absolute; top:-3px; right:-4px; border:2px solid white; background:var(--accent); color:white; font-size:8px; padding:1px 3px; min-width:16px; border-radius:20px; line-height:12px; }
+.sidebar-nav>button.admin-navigation { color:#906aad; }
+.profile-account-button { background:none; border:0; text-align:left; flex:1; min-width:0; padding:0; }
+.profile-account-button:hover strong { color:var(--accent); }
+@media(max-width:680px) { .project-cover-banner { height:105px; margin-top:20px; border-radius:8px; } .editable-project-name { gap:7px; } .editable-project-name svg { width:13px; } .cover-preview { height:115px; } }

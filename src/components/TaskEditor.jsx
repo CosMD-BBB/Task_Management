@@ -3,6 +3,7 @@ import {
   AlignLeft, CalendarDays, Check, CheckSquare, ChevronDown, Circle,
   Flag, Link2, LoaderCircle, Plus, Trash2, UserRound, X,
 } from 'lucide-react';
+import MultiSelect from './MultiSelect';
 import './editor.css';
 
 const STATUS_OPTIONS = [
@@ -21,6 +22,15 @@ const PRIORITY_OPTIONS = [
 const CONTENT_TYPES = ['Single Post', 'Photo album', 'Infographic', 'Video', 'Reel', 'Story', 'Blog', 'Other'];
 const CHANNELS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LINE', 'Website', 'Other'];
 const makeId = () => globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const uniqueValues = (values) => [...new Set(values.filter((value) => typeof value === 'string').map((value) => value.trim()).filter(Boolean))];
+const normalizeValues = (values, legacyValue) => uniqueValues(Array.isArray(values) ? values : legacyValue ? [legacyValue] : []);
+const tagColor = (value, kind) => {
+  const namedColors = { Facebook: '#3873cf', Instagram: '#bd658f', TikTok: '#556073', YouTube: '#d75d62', LINE: '#529866', Website: '#538bb1', Video: '#c5677d', VDO: '#c5677d', Infographic: '#408fac', 'Photo album': '#9162b9' };
+  if (namedColors[value]) return namedColors[value];
+  const palette = kind === 'channel' ? ['#477b9e', '#547c94', '#6176b1', '#508e8c'] : ['#8262ad', '#aa6a8e', '#6e80b8', '#978046'];
+  const hash = Array.from(value).reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  return palette[hash % palette.length];
+};
 
 function initialDraft(task, initialValues, project) {
   const values = task || initialValues || {};
@@ -30,9 +40,9 @@ function initialDraft(task, initialValues, project) {
     status: values.status || 'todo',
     priority: values.priority || 'normal',
     dueDate: values.dueDate?.slice(0, 10) || '',
-    assigneeId: values.assigneeId || '',
-    contentType: values.contentType || '',
-    channel: values.channel || '',
+    assigneeIds: normalizeValues(values.assigneeIds, values.assigneeId),
+    contentTypes: normalizeValues(values.contentTypes, values.contentType),
+    channels: normalizeValues(values.channels, values.channel),
     links: (values.links || []).map((link) => ({ ...link })),
     subtasks: (values.subtasks || []).map((item) => ({ ...item, id: item.id || makeId() })),
     customFields: { ...(values.customFields || {}) },
@@ -49,17 +59,18 @@ function safeUrl(value) {
   }
 }
 
-function MetadataField({ icon: Icon, label, children }) {
-  return <div className="tm-editor-meta-field">
-    <div className="tm-editor-meta-label"><Icon size={15} aria-hidden="true" />{label}</div>
+function MetadataField({ icon: Icon, label, help, wide = false, children }) {
+  return <div className={`tm-editor-meta-field ${wide ? 'tm-editor-meta-field-wide' : ''}`}>
+    <div className="tm-editor-meta-label"><div><Icon size={15} aria-hidden="true" /><span>{label}</span></div>{help && <small>{help}</small>}</div>
     {children}
   </div>;
 }
 
-export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit = true, initialValues }) {
+export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit = true, initialValues, existingTasks = [], onAddTag }) {
   const [draft, setDraft] = useState(() => initialDraft(task, initialValues, project));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [addingTag, setAddingTag] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState(false);
   const [error, setError] = useState('');
   const [subtaskTitle, setSubtaskTitle] = useState('');
@@ -73,10 +84,20 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
   const [dirty, setDirty] = useState(false);
   const isExisting = Boolean(task?.id);
   const readonly = !canEdit;
-  const busy = saving || deleting;
+  const busy = saving || deleting || addingTag;
   const members = (project?.members || []).map((member) => member.user || member).filter((member) => member?.id);
   const completed = draft.subtasks.filter((item) => item.done).length;
   const currentStatus = STATUS_OPTIONS.find((status) => status.value === draft.status) || STATUS_OPTIONS[0];
+  const contentCatalog = uniqueValues([
+    ...(project?.contentTypeOptions?.length ? project.contentTypeOptions : CONTENT_TYPES),
+    ...existingTasks.flatMap((item) => normalizeValues(item.contentTypes, item.contentType)),
+    ...draft.contentTypes,
+  ]).map((value) => ({ value, label: value, color: tagColor(value, 'contentType') }));
+  const channelCatalog = uniqueValues([
+    ...(project?.channelOptions?.length ? project.channelOptions : CHANNELS),
+    ...existingTasks.flatMap((item) => normalizeValues(item.channels, item.channel)),
+    ...draft.channels,
+  ]).map((value) => ({ value, label: value, color: tagColor(value, 'channel') }));
 
   closeRef.current = onClose;
   busyRef.current = busy;
@@ -106,6 +127,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
       target?.focus();
     }, 0);
     function handleKey(event) {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         if (busyRef.current) return;
@@ -160,6 +182,13 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
     update('subtasks', draft.subtasks.map((item) => item.id === id ? { ...item, ...patch } : item));
   }
 
+  async function addTag(kind, value) {
+    const updatedProject = await onAddTag(kind, value);
+    const options = kind === 'channel' ? updatedProject?.channelOptions : updatedProject?.contentTypeOptions;
+    const canonical = options?.find((option) => option.toLocaleLowerCase() === value.toLocaleLowerCase()) || value;
+    return { value: canonical, label: canonical, color: tagColor(canonical, kind) };
+  }
+
   function addSubtask() {
     const title = subtaskTitle.trim();
     if (!title) return;
@@ -173,6 +202,10 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
     if (!draft.title.trim()) {
       setError('Give your task a name before saving.');
       titleRef.current?.focus();
+      return;
+    }
+    if (draft.assigneeIds.length > 50 || draft.contentTypes.length > 20 || draft.channels.length > 20) {
+      setError('เลือกผู้รับผิดชอบได้สูงสุด 50 คน และเลือกประเภทคอนเทนต์หรือช่องทางได้สูงสุดอย่างละ 20 รายการ');
       return;
     }
     const links = [];
@@ -199,9 +232,9 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
         status: draft.status,
         priority: draft.priority,
         dueDate: draft.dueDate || null,
-        assigneeId: draft.assigneeId || null,
-        contentType: draft.contentType.trim(),
-        channel: draft.channel.trim(),
+        assigneeIds: uniqueValues(draft.assigneeIds),
+        contentTypes: uniqueValues(draft.contentTypes),
+        channels: uniqueValues(draft.channels),
         links,
         subtasks: subtasks.map((item) => ({ id: item.id, title: item.title.trim(), done: Boolean(item.done) })),
         customFields: draft.customFields,
@@ -263,16 +296,20 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
             <MetadataField icon={Flag} label="Priority"><div className="tm-editor-select-wrap"><select aria-label="Priority" value={draft.priority} onChange={(event) => update('priority', event.target.value)} disabled={readonly || busy}>
               {PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select><ChevronDown size={13} /></div></MetadataField>
-            <MetadataField icon={UserRound} label="Assignee"><div className="tm-editor-select-wrap"><select aria-label="Assignee" value={draft.assigneeId} onChange={(event) => update('assigneeId', event.target.value)} disabled={readonly || busy}>
-              <option value="">Unassigned</option>
-              {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-            </select><ChevronDown size={13} /></div></MetadataField>
             <MetadataField icon={CalendarDays} label="Due date"><input type="date" aria-label="Due date" max="9999-12-31" value={draft.dueDate} onChange={(event) => update('dueDate', event.target.value)} disabled={readonly || busy} /></MetadataField>
-            <MetadataField icon={AlignLeft} label="Content type"><input aria-label="Content type" list="tm-content-types" placeholder="Select or add a type" value={draft.contentType} onChange={(event) => update('contentType', event.target.value)} disabled={readonly || busy} maxLength={100} />
-              <datalist id="tm-content-types">{CONTENT_TYPES.map((option) => <option key={option} value={option} />)}</datalist>
+            <MetadataField icon={UserRound} label="Assignees" help="ผู้รับผิดชอบ · เลือกได้หลายคน" wide>
+              <MultiSelect label="Assignees" value={draft.assigneeIds} options={members.map((member) => ({ value: member.id, label: member.name, description: member.email, color: member.avatarColor }))}
+                onChange={(values) => update('assigneeIds', values)} variant="assignee" placeholder="เลือกผู้รับผิดชอบ…" disabled={busy} readonly={readonly} maxSelected={50} />
             </MetadataField>
-            <MetadataField icon={Link2} label="Channel"><input aria-label="Channel" list="tm-channels" placeholder="Select or add a channel" value={draft.channel} onChange={(event) => update('channel', event.target.value)} disabled={readonly || busy} maxLength={100} />
-              <datalist id="tm-channels">{CHANNELS.map((option) => <option key={option} value={option} />)}</datalist>
+            <MetadataField icon={AlignLeft} label="Type Content" help="รูปแบบงาน · เลือกหลายประเภทได้" wide>
+              <MultiSelect label="Type Content" value={draft.contentTypes} options={contentCatalog} onChange={(values) => update('contentTypes', values)}
+                variant="type" placeholder="เลือกประเภทคอนเทนต์…" disabled={busy} readonly={readonly} onPendingChange={setAddingTag} maxSelected={20}
+                onCreate={onAddTag && !readonly ? (value) => addTag('contentType', value) : undefined} />
+            </MetadataField>
+            <MetadataField icon={Link2} label="Channels" help="ช่องทางเผยแพร่ · เลือกได้หลายช่องทาง" wide>
+              <MultiSelect label="Channels" value={draft.channels} options={channelCatalog} onChange={(values) => update('channels', values)}
+                variant="channel" placeholder="เลือกช่องทางเผยแพร่…" disabled={busy} readonly={readonly} onPendingChange={setAddingTag} maxSelected={20}
+                onCreate={onAddTag && !readonly ? (value) => addTag('channel', value) : undefined} />
             </MetadataField>
             {(project?.fields || []).map((field) => <MetadataField key={field.id} icon={AlignLeft} label={field.name}>
               {field.type === 'select' ? <div className="tm-editor-select-wrap"><select aria-label={field.name} value={draft.customFields[field.id] || ''}

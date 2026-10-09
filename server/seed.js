@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { normalizeStoredTask, uniqueTags } from './domain.js';
 
 function dateOffset(days) {
   const today = new Intl.DateTimeFormat('en-CA', {
@@ -10,18 +11,29 @@ function dateOffset(days) {
 }
 
 export async function seedDemo(db) {
+  return db.transaction((tx) => seedDemoData(tx));
+}
+
+async function seedDemoData(db) {
   const suffix = randomUUID().slice(0, 8);
+  const demoScopeId = randomUUID();
   const now = new Date().toISOString();
   const people = [
     { name: 'Alex Morgan', avatar_color: '#f97316' },
     { name: 'พิมพ์ชนก', avatar_color: '#a78bfa' },
     { name: 'Nat Studio', avatar_color: '#38bdf8' },
     { name: 'Sarah Chen', avatar_color: '#34d399' },
-  ].map((person, index) => ({ ...person, id: randomUUID(), email: `demo-${suffix}-${index}@example.invalid` }));
+  ].map((person, index) => ({
+    ...person, id: randomUUID(), email: `demo-${suffix}-${index}@example.invalid`,
+    global_role: index === 0 ? 'superadmin' : 'member', email_verified: 1, disabled_at: null, demo_scope_id: demoScopeId,
+  }));
   for (const person of people) {
-    await db.run('INSERT INTO users (id, name, email, password_hash, avatar_color, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+    await db.run(`INSERT INTO users (id, name, email, password_hash, avatar_color, created_at, global_role, email_verified, demo_scope_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
       person.id, person.name, person.email, '!demo-only-no-login', person.avatar_color, now,
+      person.global_role, person.email_verified, person.demo_scope_id,
     ]);
+    await db.run("UPDATE users SET email_verified_mode = 'preview' WHERE id = ?", [person.id]);
   }
   const projects = [
     {
@@ -34,11 +46,12 @@ export async function seedDemo(db) {
     },
     { id: randomUUID(), name: 'Team Operations', description: 'A little structure for our everyday work.', color: '#34d399', fields: [] },
   ];
-  for (const project of projects) {
+  for (const [projectIndex, project] of projects.entries()) {
+    const owner = people[projectIndex === 2 ? 3 : 0];
     await db.run('INSERT INTO projects (id, name, description, color, owner_id, fields_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-      project.id, project.name, project.description, project.color, people[0].id, JSON.stringify(project.fields), now,
+      project.id, project.name, project.description, project.color, owner.id, JSON.stringify(project.fields), now,
     ]);
-    for (const person of people.slice(1)) {
+    for (const person of people.filter((person) => person.id !== owner.id)) {
       await db.run('INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)', [project.id, person.id, 'editor']);
     }
   }
@@ -79,7 +92,7 @@ export async function seedDemo(db) {
     for (const [index, entry] of entries.entries()) {
       const [title, status, priority, days, contentType, channel, personIndex] = entry;
       const project = projects[projectIndex];
-      const task = {
+      const task = normalizeStoredTask({
         id: randomUUID(), projectId: project.id, title,
         description: projectIndex === 0
           ? 'วางแผนคอนเทนต์ให้สอดคล้องกับ Brand voice เน้นข้อมูลที่เข้าใจง่าย พร้อมส่งทีมตรวจสอบก่อนเผยแพร่\n\nKey message: Gentle care, every day.\nDeliverables: Copy, visual direction และ final artwork.'
@@ -94,11 +107,23 @@ export async function seedDemo(db) {
         customFields: projectIndex === 0 ? { campaign: index % 3 === 0 ? 'October Sale' : index % 3 === 1 ? 'Product Launch' : 'Always-on' }
           : projectIndex === 1 ? { section: index < 2 ? 'Storefront' : 'Launch' } : {},
         createdAt: new Date(Date.now() - (entries.length - index) * 60 * 1000).toISOString(), updatedAt: now,
-      };
+      });
       await db.run('INSERT INTO tasks (id, project_id, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', [
         task.id, task.projectId, JSON.stringify(task), task.createdAt, task.updatedAt,
       ]);
+      if (projectIndex === 0 && index === 9) {
+        await db.run(`INSERT INTO notifications (id, user_id, actor_id, project_id, task_id, type, title, body, created_at, read_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+          randomUUID(), people[0].id, people[1].id, project.id, task.id, 'assignment', task.title,
+          `${people[1].name} มอบหมายงานให้คุณในโปรเจกต์ ${project.name}`, now, null,
+        ]);
+      }
     }
+    const entriesForProject = taskGroups[projectIndex];
+    await db.run('UPDATE projects SET content_type_options_json = ?, channel_options_json = ? WHERE id = ?', [
+      JSON.stringify(uniqueTags(entriesForProject.map((entry) => entry[4]).filter(Boolean))),
+      JSON.stringify(uniqueTags(entriesForProject.map((entry) => entry[5]).filter(Boolean))), projects[projectIndex].id,
+    ]);
   }
   return people[0];
 }

@@ -10,7 +10,7 @@ import { createApp } from './app.js';
 const PASSWORD = 'correct-horse-battery';
 
 async function startServer(databasePath) {
-  const app = await createApp({ databasePath, databaseUrl: '', disableRateLimit: true, distPath: '/nonexistent-test-dist' });
+  const app = await createApp({ databasePath, databaseUrl: '', disableRateLimit: true, mailMode: 'preview', distPath: '/nonexistent-test-dist' });
   const server = await new Promise((resolve, reject) => {
     const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
     listening.once('error', reject);
@@ -70,8 +70,18 @@ async function expectRequest(client, path, method, body, expectedStatus = 200, h
 async function register(server, email, name = email.split('@')[0]) {
   const client = server.client();
   const { data } = await expectRequest(client, '/api/auth/register', 'POST', { name, email, password: PASSWORD }, 201);
-  client.user = data.user;
+  assert.equal(data.verificationRequired, true);
+  client.user = await verifyEmail(client);
   return client;
+}
+
+async function verifyEmail(client) {
+  const { data } = await expectRequest(client, '/api/auth/mail-preview', 'GET');
+  const message = data.messages.findLast((entry) => entry.kind === 'verify');
+  assert.ok(message, 'A verification message must be available in preview mode');
+  const token = new URL(message.actionUrl).searchParams.get('token');
+  assert.ok(token);
+  return (await expectRequest(client, '/api/auth/verify-email', 'POST', { token })).data.user;
 }
 
 async function createProject(client, extra = {}) {
@@ -92,7 +102,10 @@ test('authentication normalizes email, hashes credentials, rotates sessions and 
   }, 201, { 'X-Forwarded-Proto': 'https' });
   assert.equal(registration.data.user.name, 'Content Lead');
   assert.equal(registration.data.user.email, 'lead@example.com');
-  assert.deepEqual(Object.keys(registration.data.user).sort(), ['avatarColor', 'email', 'id', 'name']);
+  assert.equal(registration.data.user.emailVerified, false);
+  assert.equal(registration.data.verificationRequired, true);
+  assert.equal(registration.data.mailMode, 'preview');
+  assert.ok(!('password_hash' in registration.data.user));
   assert.match(registration.setCookie, /HttpOnly/);
   assert.match(registration.setCookie, /SameSite=Lax/);
   assert.match(registration.setCookie, /Secure/);
@@ -109,6 +122,12 @@ test('authentication normalizes email, hashes credentials, rotates sessions and 
   assert.notEqual(stored.token_hash, token);
   assert.equal(stored.token_hash, createHash('sha256').update(token).digest('hex'));
   assert.ok(new Date(stored.expires_at).getTime() > Date.now());
+  const pending = await expectRequest(client, '/api/projects', 'GET', undefined, 403);
+  assert.equal(pending.data.code, 'EMAIL_NOT_VERIFIED');
+  assert.equal((await verifyEmail(client)).emailVerified, true);
+  const verifiedCookie = client.cookie;
+  assert.notEqual(verifiedCookie, oldCookie);
+  await expectRequest(server.client(oldCookie), '/api/auth/me', 'GET', undefined, 401);
   await expectRequest(server.client(), '/api/auth/register', 'POST', {
     name: 'Duplicate', email: 'LEAD@example.com', password: PASSWORD,
   }, 409);
@@ -121,8 +140,8 @@ test('authentication normalizes email, hashes credentials, rotates sessions and 
   const unknownEmail = await expectRequest(client, '/api/auth/login', 'POST', { email: 'missing@example.com', password: 'incorrect' }, 401);
   assert.deepEqual(badPassword.data, unknownEmail.data);
   await expectRequest(client, '/api/auth/login', 'POST', { email: user.email, password: PASSWORD });
-  assert.notEqual(client.cookie, oldCookie);
-  await expectRequest(server.client(oldCookie), '/api/auth/me', 'GET', undefined, 401);
+  assert.notEqual(client.cookie, verifiedCookie);
+  await expectRequest(server.client(verifiedCookie), '/api/auth/me', 'GET', undefined, 401);
   const currentCookie = client.cookie;
   assert.equal((await expectRequest(client, '/api/auth/me', 'GET')).data.user.id, user.id);
   await expectRequest(client, '/api/auth/logout', 'POST', undefined, 204);

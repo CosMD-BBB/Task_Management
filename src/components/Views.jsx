@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, ClipboardList, Flag, GripVertical, Link2, ListTodo, MessageSquare, MoreHorizontal, Plus, X } from 'lucide-react';
+import { ArrowUp, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, Flag, GripVertical, Link2, ListTodo, MessageSquare, Plus, X } from 'lucide-react';
 import './views.css';
 
 export const STATUSES = [
@@ -45,6 +45,21 @@ function Avatar({ user, small = false }) {
   return <span className={`tm-avatar ${small ? 'tm-avatar-small' : ''}`} style={{ '--avatar-color': user?.avatarColor || '#e9b87b' }} title={user?.name || 'Unassigned'} aria-label={user?.name || 'Unassigned'}>{user ? initials(user.name) : <Circle size={13} />}</span>;
 }
 
+function taskValues(task, field, legacyField) {
+  const values = Array.isArray(task[field]) ? task[field] : task[legacyField] ? [task[legacyField]] : [];
+  return [...new Set(values.filter(Boolean))];
+}
+
+function TaskAssignees({ task, members, compact = false }) {
+  const users = taskValues(task, 'assigneeIds', 'assigneeId').map(id => members[id]).filter(Boolean);
+  if (!users.length) return compact ? <Avatar small /> : <span className="tm-assignee-empty">ยังไม่มอบหมาย</span>;
+  const visible = compact ? users.slice(0, 3) : users;
+  return <span className={`tm-assignees ${compact ? 'tm-assignees-compact' : ''}`} title={users.map(user => user.name).join(', ')}>
+    <span className="tm-assignee-avatars">{visible.map(user => <Avatar key={user.id} user={user} small />)}{compact && users.length > 3 && <span className="tm-assignee-extra">+{users.length - 3}</span>}</span>
+    {!compact && <span className="tm-assignee-names">{users.map(user => user.name?.split(' ')[0]).join(', ')}</span>}
+  </span>;
+}
+
 function Priority({ value, compact = false }) {
   const item = PRIORITIES.find(priority => priority.id === value) || PRIORITIES[2];
   return <span className={`tm-priority ${compact ? 'tm-priority-compact' : ''}`} style={{ color: item.color }} title={`${item.label} priority`}><Flag size={12} fill={item.color} strokeWidth={1.5} />{!compact && item.label}</span>;
@@ -60,6 +75,22 @@ function ContentTag({ value }) {
 function ChannelTag({ value }) {
   if (!value) return <span className="tm-muted">—</span>;
   return <span className={`tm-channel tm-channel-${value.toLowerCase().replace(/[^a-z]/g, '')}`}>{value}</span>;
+}
+
+function TaskTags({ task, kind }) {
+  const values = kind === 'contentType' ? taskValues(task, 'contentTypes', 'contentType') : taskValues(task, 'channels', 'channel');
+  if (!values.length) return <span className="tm-muted">—</span>;
+  return <span className="tm-task-tags">{values.map(value => kind === 'contentType' ? <ContentTag key={value} value={value} /> : <ChannelTag key={value} value={value} />)}</span>;
+}
+
+function TaskStatusSelect({ task, canEdit, pending, onStatusChange }) {
+  const status = STATUSES.find(item => item.id === task.status) || STATUSES[0];
+  return <span className="tm-inline-status" style={{ '--status-color': status.color, '--status-light': status.light }}>
+    <span className="tm-inline-status-dot" aria-hidden="true" />
+    <select aria-label={`Status for ${task.title}`} title={canEdit ? 'เลือกสถานะของงาน' : 'ดูได้อย่างเดียว'} value={task.status} disabled={!canEdit || pending} onChange={event => onStatusChange(task, event.target.value)}>
+      {STATUSES.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+    </select><ChevronDown size={11} aria-hidden="true" />
+  </span>;
 }
 
 function TaskDate({ task }) {
@@ -93,14 +124,15 @@ function ListView({ tasks, project, onEdit, onStatusChange, onCreate, canEdit, p
         </div>
         {!collapsed[status.id] && <div className="tm-table-scroll">
           <table className="tm-task-table">
-            <thead><tr><th className="tm-name-heading">Task name</th><th>Priority</th><th>Assignee</th><th>Due date</th><th>Type Content</th><th>Channel</th><th>Files & links</th>{fields.map(field => <th key={field.id}>{field.name}</th>)}</tr></thead>
+            <thead><tr><th className="tm-name-heading">Task name</th><th>Status</th><th>Priority</th><th>Assignees</th><th>Due date</th><th>Type Content</th><th>Channels</th><th>Files & links</th>{fields.map(field => <th key={field.id}>{field.name}</th>)}</tr></thead>
             <tbody>{grouped.map(task => <tr key={task.id} className={task.status === 'done' ? 'tm-complete-row' : ''}>
-              <td><div className="tm-task-name-cell"><button disabled={!canEdit || pending.has(task.id)} className="tm-complete-button" aria-label={task.status === 'done' ? `Reopen ${task.title}` : `Mark ${task.title} complete`} style={{ '--status-color': status.color }} onClick={() => onStatusChange(task, task.status === 'done' ? 'todo' : 'done')}>{task.status === 'done' ? <Check size={12} /> : <Circle size={15} />}</button><button className="tm-task-title" onClick={() => onEdit(task)}>{task.title}</button>{task.description && <MessageSquare size={13} className="tm-description-indicator" aria-label="Has description" />}{!!task.subtasks?.length && <span className="tm-subtask-progress" title="Completed checklist items"><CheckCircle2 size={12} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}</div></td>
+              <td><div className="tm-task-name-cell"><span className="tm-task-status-marker" style={{ color: status.color }} aria-hidden="true"><Circle size={14} /></span><button className="tm-task-title" onClick={() => onEdit(task)}>{task.title}</button>{task.description && <MessageSquare size={13} className="tm-description-indicator" aria-label="Has description" />}{!!task.subtasks?.length && <span className="tm-subtask-progress" title="Completed checklist items"><CheckCircle2 size={12} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}</div></td>
+              <td><TaskStatusSelect task={task} canEdit={canEdit} pending={pending.has(task.id)} onStatusChange={onStatusChange} /></td>
               <td><Priority value={task.priority} /></td>
-              <td><div className="tm-assignee"><Avatar user={members[task.assigneeId]} small /><span>{members[task.assigneeId]?.name?.split(' ')[0] || 'Unassigned'}</span></div></td>
+              <td><TaskAssignees task={task} members={members} /></td>
               <td><TaskDate task={task} /></td>
-              <td><ContentTag value={task.contentType} /></td>
-              <td><ChannelTag value={task.channel} /></td>
+              <td><TaskTags task={task} kind="contentType" /></td>
+              <td><TaskTags task={task} kind="channel" /></td>
               <td>{task.links?.length ? <div className="tm-link-cell">{task.links.slice(0, 1).map((link, index) => safeLink(link.url) ? <a key={index} href={safeLink(link.url)} target="_blank" rel="noopener noreferrer" title={link.url}><Link2 size={13} /><span>{link.label || 'Open file'}</span></a> : <span className="tm-muted" key={index}>Invalid link</span>)}{task.links.length > 1 && <button className="tm-link-more" onClick={() => onEdit(task)}>+{task.links.length - 1}</button>}</div> : <span className="tm-muted">—</span>}</td>
               {fields.map(field => <td key={field.id}><span className="tm-custom-value">{task.customFields?.[field.id] || <span className="tm-muted">—</span>}</span></td>)}
             </tr>)}</tbody>
@@ -134,8 +166,8 @@ function BoardView({ tasks, project, onEdit, onStatusChange, onCreate, canEdit, 
           <div className="tm-card-top"><Priority value={task.priority} />{canEdit && <GripVertical size={14} className="tm-card-grip" aria-hidden="true" />}</div>
           <button className="tm-card-title" onClick={() => onEdit(task)}>{task.title}</button>
           {task.description && <p className="tm-card-description">{task.description}</p>}
-          {(task.contentType || task.channel) && <div className="tm-card-tags">{task.contentType && <ContentTag value={task.contentType} />}{task.channel && <ChannelTag value={task.channel} />}</div>}
-          <div className="tm-card-details"><TaskDate task={task} /><span className="tm-card-details-right">{!!task.links?.length && <span title={`${task.links.length} attached links`}><Link2 size={13} />{task.links.length}</span>}{!!task.subtasks?.length && <span title="Checklist progress"><CheckCircle2 size={13} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}<Avatar user={members[task.assigneeId]} small /></span></div>
+          {(taskValues(task, 'contentTypes', 'contentType').length > 0 || taskValues(task, 'channels', 'channel').length > 0) && <div className="tm-card-tags">{taskValues(task, 'contentTypes', 'contentType').map(value => <ContentTag key={`content-${value}`} value={value} />)}{taskValues(task, 'channels', 'channel').map(value => <ChannelTag key={`channel-${value}`} value={value} />)}</div>}
+          <div className="tm-card-details"><TaskDate task={task} /><span className="tm-card-details-right">{!!task.links?.length && <span title={`${task.links.length} attached links`}><Link2 size={13} />{task.links.length}</span>}{!!task.subtasks?.length && <span title="Checklist progress"><CheckCircle2 size={13} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}<TaskAssignees task={task} members={members} compact /></span></div>
           {canEdit && <div className="tm-card-status-control"><select value={task.status} disabled={pending.has(task.id)} aria-label={`Move ${task.title} to status`} onChange={event => onStatusChange(task, event.target.value)}>{STATUSES.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select><ChevronDown size={12} aria-hidden="true" /></div>}
         </article>)}</div>
         {canEdit ? <button className="tm-board-add" onClick={() => onCreate({ status: status.id })}><Plus size={15} />Add task</button> : !grouped.length && <span className="tm-board-empty">No tasks yet</span>}

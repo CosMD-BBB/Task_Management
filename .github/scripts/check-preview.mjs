@@ -18,6 +18,7 @@ const demo = await fetch(`${base}/api/auth/demo`, {
   method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: '{}',
 });
 if (demo.status !== 201) throw new Error(`Public demo failed (${demo.status})`);
+const { user } = await demo.json();
 const cookie = demo.headers.getSetCookie()[0]?.split(';')[0];
 if (!cookie) throw new Error('Session cookie was not issued');
 const headers = { cookie, 'content-type': 'application/json', origin: base };
@@ -28,11 +29,25 @@ if (!projects.length) throw new Error('Demo project missing');
 const tasksResponse = await fetch(`${base}/api/projects/${projects[0].id}/tasks`, { headers });
 const { tasks } = await tasksResponse.json();
 if (!tasksResponse.ok || !tasks.length) throw new Error('Seeded tasks missing');
+const assigneeIds = [...new Set([user.id, ...projects[0].members.map(member => member.userId)])].slice(0, 2);
+const catalogResponse = await fetch(`${base}/api/projects/${projects[0].id}/tags`, {
+  method: 'PATCH', headers, body: JSON.stringify({ kind: 'contentType', value: 'Readiness custom content' }),
+});
+if (!catalogResponse.ok) throw new Error('Public custom content catalog failed');
 const created = await fetch(`${base}/api/projects/${projects[0].id}/tasks`, {
-  method: 'POST', headers, body: JSON.stringify({ title: 'Public preview readiness check', priority: 'high' }),
+  method: 'POST', headers, body: JSON.stringify({ title: 'Public preview readiness check', priority: 'high', assigneeIds, contentTypes: ['Infographic', 'Readiness custom content'], channels: ['Facebook', 'Instagram'] }),
 });
 if (created.status !== 201) throw new Error('Public task creation failed');
 const { task } = await created.json();
+if (task.assigneeIds.length !== 2 || task.contentTypes.length !== 2 || task.channels.length !== 2) throw new Error('Public multi-value task fields failed');
+const changed = await fetch(`${base}/api/tasks/${task.id}`, { method: 'PATCH', headers, body: JSON.stringify({ status: 'review' }) });
+if (!changed.ok) throw new Error('Public direct status update failed');
+const { task: updated } = await changed.json();
+if (updated.status !== 'review' || updated.assigneeIds.length !== 2 || updated.contentTypes.length !== 2) throw new Error('Status update did not preserve task details');
+const notificationResponse = await fetch(`${base}/api/notifications`, { headers });
+if (!notificationResponse.ok || !(await notificationResponse.json()).notifications.some(notification => notification.taskId === task.id)) throw new Error('Public assignment notification failed');
+const adminResponse = await fetch(`${base}/api/admin/users`, { headers });
+if (!adminResponse.ok || !(await adminResponse.json()).users.every(member => member.demoScopeId === user.demoScopeId)) throw new Error('Public demo administrator isolation failed');
 const deleted = await fetch(`${base}/api/tasks/${task.id}`, { method: 'DELETE', headers });
 if (deleted.status !== 204) throw new Error('Public task cleanup failed');
-console.log('Public frontend, login, project access and task CRUD verified.');
+console.log('Public frontend, login, task CRUD, multiple assignees/tags, direct status, notifications and isolated demo administration verified.');
