@@ -1,9 +1,9 @@
 {
-  "status": "online",
+  "status": "offline",
   "url": "https://reseller-reply-phoenix-text.trycloudflare.com",
   "sourceCommit": "cf09390097e896263bf68cc1db6bf6fde2ceb922",
   "startedAt": "2026-10-09T06:27:23.589Z",
   "expiresAt": "2026-10-09T06:57:23.589Z",
-  "updatedAt": "2026-10-09T06:27:23.589Z",
+  "updatedAt": "2026-10-09T06:35:40.039Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
