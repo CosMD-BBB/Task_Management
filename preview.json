@@ -1,9 +1,9 @@
 {
-  "status": "offline",
-  "url": "https://tri-dialogue-warriors-licensing.trycloudflare.com",
-  "sourceCommit": "96979f7136c8b5de15a8554979d8c00b0e16c6f4",
-  "startedAt": "2026-10-09T05:47:54.792Z",
-  "expiresAt": "2026-10-09T06:17:54.792Z",
-  "updatedAt": "2026-10-09T06:17:56.764Z",
+  "status": "online",
+  "url": "https://reseller-reply-phoenix-text.trycloudflare.com",
+  "sourceCommit": "cf09390097e896263bf68cc1db6bf6fde2ceb922",
+  "startedAt": "2026-10-09T06:27:23.589Z",
+  "expiresAt": "2026-10-09T06:57:23.589Z",
+  "updatedAt": "2026-10-09T06:27:23.589Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
