@@ -36,19 +36,18 @@ async function registerVerified(request, name) {
 }
 
 async function selectMultiple(editor, label, options) {
-  await editor.getByRole('button', { name: label, exact: true }).click();
-  const popup = editor.getByRole('group', { name: `${label} options`, exact: true });
-  for (const option of options) await popup.getByRole('checkbox', { name: option, exact: true }).check();
-  await popup.getByRole('button', { name: 'เสร็จแล้ว', exact: true }).click();
+  if (label === 'Assignees') await editor.getByRole('button', { name: label, exact: true }).click();
+  const choices = editor.getByRole('group', { name: `${label} options`, exact: true });
+  await expect(choices).toBeVisible();
+  for (const option of options) await choices.getByRole('checkbox', { name: option, exact: true }).check();
+  if (label === 'Assignees') await choices.getByRole('button', { name: 'เสร็จแล้ว', exact: true }).click();
 }
 
 async function createTag(editor, label, value) {
-  await editor.getByRole('button', { name: label, exact: true }).click();
-  const popup = editor.getByRole('group', { name: `${label} options`, exact: true });
-  await popup.getByRole('textbox', { name: `Search ${label}`, exact: true }).fill(value);
-  await popup.getByRole('button', { name: /เพิ่มตัวเลือก/ }).click();
-  await expect(popup.getByRole('checkbox', { name: value, exact: true })).toBeChecked();
-  await popup.getByRole('button', { name: 'เสร็จแล้ว', exact: true }).click();
+  const choices = editor.getByRole('group', { name: `${label} options`, exact: true });
+  await choices.getByRole('textbox', { name: `New ${label} option`, exact: true }).fill(value);
+  await choices.getByRole('button', { name: `Add ${label} option`, exact: true }).click();
+  await expect(choices.getByRole('checkbox', { name: value, exact: true })).toBeChecked();
 }
 
 test('demo workspace persists a full task across List, Board and Calendar', async ({ page }) => {
@@ -124,9 +123,7 @@ test('demo workspace persists a full task across List, Board and Calendar', asyn
   await expect(editor.getByLabel('Due date', { exact: true })).toHaveValue(dueDate);
   await expect(editor.getByLabel('Status', { exact: true })).toHaveValue('scheduled');
   await expect(editor.getByLabel('Complete checklist item 1', { exact: true })).toBeChecked();
-  await editor.getByRole('button', { name: 'Type Content', exact: true }).click();
   await expect(editor.getByRole('group', { name: 'Type Content options' }).getByRole('checkbox', { name: 'รีวิวจากทีม', exact: true })).toBeChecked();
-  await editor.getByRole('group', { name: 'Type Content options' }).getByRole('button', { name: 'เสร็จแล้ว', exact: true }).click();
   await editor.getByLabel('Task name', { exact: true }).fill('Publish launch campaign — approved');
   await editor.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(editor).toHaveCount(0);
@@ -271,10 +268,19 @@ test('membership gates project visibility and viewer mutations in the UI and API
     await expect(viewer.locator('.project-role')).toHaveText('View only');
     await expect(viewer.getByRole('button', { name: 'New task', exact: true })).toHaveCount(0);
     await expect(viewer.getByLabel(`Status for ${task.title}`, { exact: true })).toBeDisabled();
+    await viewer.getByRole('button', { name: 'สลับโหมดสี', exact: true }).click();
+    await expect(viewer.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(viewer.getByLabel(`Status for ${task.title}`, { exact: true })).toBeDisabled();
     await viewer.getByRole('button', { name: task.title, exact: true }).click();
     const editor = viewer.getByRole('dialog', { name: 'Task details' });
     await expect(editor.getByLabel('Task name', { exact: true })).toBeDisabled();
     await expect(editor.getByLabel('Status', { exact: true })).toBeDisabled();
+    for (const label of ['Type Content', 'Channels']) {
+      const choices = editor.getByRole('group', { name: `${label} options`, exact: true });
+      await expect(choices).toBeVisible();
+      await expect(choices.getByRole('checkbox').first()).toBeDisabled();
+      await expect(choices.getByRole('textbox', { name: `New ${label} option`, exact: true })).toHaveCount(0);
+    }
     await expect(editor.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(0);
     await expect(editor.getByRole('button', { name: 'Delete task', exact: true })).toHaveCount(0);
     await editor.getByRole('button', { name: 'Close', exact: true }).click();
@@ -445,7 +451,7 @@ test('demo administration scopes users and supports edit, suspend, reactivate an
   } finally { await outsiderContext.close(); }
 });
 
-test('mobile workspace and multi-select menus fit the screen in all three views', async ({ page }) => {
+test('mobile workspace and visible content choices fit the screen in all three views', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expectNoPageOverflow(page);
@@ -461,17 +467,22 @@ test('mobile workspace and multi-select menus fit the screen in all three views'
   const editor = page.getByRole('dialog', { name: 'Task details' });
   await expect(editor).toBeVisible();
   await expectNoPageOverflow(page);
-  for (const label of ['Assignees', 'Type Content', 'Channels']) {
-    await editor.getByRole('button', { name: label, exact: true }).click();
-    const popup = editor.getByRole('group', { name: `${label} options`, exact: true });
-    await expect(popup).toBeVisible();
-    const bounds = await popup.boundingBox();
+  await editor.getByRole('button', { name: 'Assignees', exact: true }).click();
+  const assignees = editor.getByRole('group', { name: 'Assignees options', exact: true });
+  await expect(assignees).toBeVisible();
+  await assignees.getByRole('textbox', { name: 'Search Assignees', exact: true }).press('Escape');
+  await expect(assignees).toHaveCount(0);
+  await expect(editor).toBeVisible();
+  for (const label of ['Type Content', 'Channels']) {
+    const choices = editor.getByRole('group', { name: `${label} options`, exact: true });
+    await expect(choices).toBeVisible();
+    await choices.scrollIntoViewIfNeeded();
+    const bounds = await choices.boundingBox();
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+    await expect(choices.getByRole('checkbox').first()).toBeVisible();
+    await expect(choices.getByRole('textbox', { name: `New ${label} option`, exact: true })).toBeVisible();
     await expectNoPageOverflow(page);
-    await popup.getByRole('textbox', { name: `Search ${label}`, exact: true }).press('Escape');
-    await expect(popup).toHaveCount(0);
-    await expect(editor).toBeVisible();
   }
   await editor.getByRole('button', { name: 'Close task details', exact: true }).click();
   await (await visibleTab(page, 'Calendar')).click();

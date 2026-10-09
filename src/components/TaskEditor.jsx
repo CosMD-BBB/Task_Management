@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AlignLeft, CalendarDays, Check, CheckSquare, ChevronDown, Circle,
+  AlignLeft, CalendarDays, Check, CheckCircle2, CheckSquare, ChevronDown, Circle,
   Flag, Link2, LoaderCircle, Plus, Trash2, UserRound, X,
 } from 'lucide-react';
 import MultiSelect from './MultiSelect';
@@ -19,8 +19,10 @@ const PRIORITY_OPTIONS = [
   { value: 'normal', label: 'Normal' },
   { value: 'low', label: 'Low' },
 ];
-const CONTENT_TYPES = ['Single Post', 'Photo album', 'Infographic', 'Video', 'Reel', 'Story', 'Blog', 'Other'];
+const CONTENT_TYPES = ['Video', 'Photo album', 'Infographic', 'Single Post', 'Reel', 'Story', 'ขายของ', 'Blog', 'Other'];
 const CHANNELS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LINE', 'Website', 'Other'];
+const CONTENT_HELP = { Video: 'วิดีโอ', VDO: 'วิดีโอ', 'Photo album': 'ชุดภาพ / อัลบั้ม', Infographic: 'ภาพสรุปข้อมูล', 'Single Post': 'ภาพเดี่ยว', Reel: 'วิดีโอสั้น', Story: 'สตอรี', 'ขายของ': 'โปรโมตสินค้า', Blog: 'บทความ', Other: 'รูปแบบอื่น ๆ' };
+const CHANNEL_HELP = { Facebook: 'เพจและฟีด', Instagram: 'โพสต์ / รีล / สตอรี', TikTok: 'วิดีโอและไลฟ์', YouTube: 'วิดีโอและ Shorts', LINE: 'LINE OA', Website: 'เว็บไซต์ของทีม', Other: 'ช่องทางอื่น ๆ' };
 const makeId = () => globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const uniqueValues = (values) => [...new Set(values.filter((value) => typeof value === 'string').map((value) => value.trim()).filter(Boolean))];
 const normalizeValues = (values, legacyValue) => uniqueValues(Array.isArray(values) ? values : legacyValue ? [legacyValue] : []);
@@ -89,15 +91,17 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
   const completed = draft.subtasks.filter((item) => item.done).length;
   const currentStatus = STATUS_OPTIONS.find((status) => status.value === draft.status) || STATUS_OPTIONS[0];
   const contentCatalog = uniqueValues([
-    ...(project?.contentTypeOptions?.length ? project.contentTypeOptions : CONTENT_TYPES),
+    ...CONTENT_TYPES,
+    ...(project?.contentTypeOptions || []),
     ...existingTasks.flatMap((item) => normalizeValues(item.contentTypes, item.contentType)),
     ...draft.contentTypes,
-  ]).map((value) => ({ value, label: value, color: tagColor(value, 'contentType') }));
+  ]).map((value) => ({ value, label: value, color: tagColor(value, 'contentType'), description: CONTENT_HELP[value] }));
   const channelCatalog = uniqueValues([
-    ...(project?.channelOptions?.length ? project.channelOptions : CHANNELS),
+    ...CHANNELS,
+    ...(project?.channelOptions || []),
     ...existingTasks.flatMap((item) => normalizeValues(item.channels, item.channel)),
     ...draft.channels,
-  ]).map((value) => ({ value, label: value, color: tagColor(value, 'channel') }));
+  ]).map((value) => ({ value, label: value, color: tagColor(value, 'channel'), description: CHANNEL_HELP[value] }));
 
   closeRef.current = onClose;
   busyRef.current = busy;
@@ -200,7 +204,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
     event.preventDefault();
     if (readonly || busy) return;
     if (!draft.title.trim()) {
-      setError('Give your task a name before saving.');
+      setError('ใส่ชื่องานก่อนบันทึก');
       titleRef.current?.focus();
       return;
     }
@@ -213,14 +217,14 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
       if (!link.label?.trim() && !link.url?.trim()) continue;
       const url = safeUrl(link.url?.trim());
       if (!url) {
-        setError('File links must start with https:// or http:// and contain a valid address.');
+        setError('ใส่ลิงก์ไฟล์ให้ครบ โดยเริ่มด้วย https:// หรือ http://');
         return;
       }
       links.push({ label: link.label?.trim() || new URL(url).hostname.slice(0, 100), url });
     }
     const subtasks = subtaskTitle.trim() ? [...draft.subtasks, { id: makeId(), title: subtaskTitle.trim(), done: false }] : draft.subtasks;
     if (subtasks.some((item) => !item.title.trim())) {
-      setError('Each checklist item needs a title. You can remove empty items.');
+      setError('ใส่ชื่อรายการงานย่อยให้ครบ หรือลบรายการที่ไม่ได้ใช้');
       return;
     }
     setError('');
@@ -243,7 +247,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
       dirtyRef.current = false;
       onClose?.();
     } catch (saveError) {
-      setError(saveError?.message || 'The task could not be saved. Please try again.');
+      setError(saveError?.message || 'บันทึกงานไม่สำเร็จ กรุณาลองอีกครั้ง');
     } finally {
       setSaving(false);
     }
@@ -259,7 +263,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
       dirtyRef.current = false;
       onClose?.();
     } catch (deleteError) {
-      setError(deleteError?.message || 'The task could not be deleted. Please try again.');
+      setError(deleteError?.message || 'ลบงานไม่สำเร็จ กรุณาลองอีกครั้ง');
       setDeletePrompt(false);
     } finally {
       setDeleting(false);
@@ -273,7 +277,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
       aria-labelledby="tm-editor-heading" tabIndex={-1}>
       <div className="tm-editor-topbar">
         <div className="tm-editor-breadcrumb"><span className="tm-editor-project-dot" style={{ background: project?.color || 'var(--accent, #0e8778)' }} />
-          <span>{project?.name || 'Project'}</span><span className="tm-editor-slash">/</span><span>{isExisting ? 'Task details' : 'New task'}</span>
+          <span>{project?.name || 'โปรเจกต์'}</span><span className="tm-editor-slash">/</span><span>{isExisting ? 'รายละเอียดงาน' : 'สร้างงานใหม่'}</span>
         </div>
         <button type="button" className="tm-editor-icon-button" onClick={requestClose} disabled={busy} aria-label="Close task details"><X size={20} /></button>
       </div>
@@ -281,53 +285,55 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
         <div className="tm-editor-content">
           <div className="tm-editor-heading-row">
             <span className="tm-editor-status-kicker" style={{ '--tm-status-color': currentStatus.color }}><Circle size={13} />{currentStatus.label}</span>
-            {readonly && <span className="tm-editor-readonly">View only</span>}
+            {readonly && <span className="tm-editor-readonly">ดูได้อย่างเดียว</span>}
           </div>
           <h2 className="tm-editor-sr-only" id="tm-editor-heading">{isExisting ? 'Task details' : 'Create a task'}</h2>
           <label className="tm-editor-sr-only" htmlFor="tm-editor-title">Task name</label>
-          <input id="tm-editor-title" ref={titleRef} className="tm-editor-title" placeholder="What needs to get done?"
+          <input id="tm-editor-title" ref={titleRef} className="tm-editor-title" placeholder="ตั้งชื่องาน เช่น ทำวิดีโอเปิดตัวสินค้า"
             value={draft.title} onChange={(event) => update('title', event.target.value)} maxLength={250} disabled={readonly || busy} required />
-          <p className="tm-editor-title-help">{isExisting ? 'Keep your team aligned, one task at a time.' : 'A little clarity goes a long way. Add the details below.'}</p>
+          <p className="tm-editor-title-help">{readonly ? 'รายละเอียดและแผนเผยแพร่ของงานนี้' : 'เลือกสถานะ ผู้รับผิดชอบ และแผนเผยแพร่ได้ในหน้านี้ แล้วกดบันทึกด้านล่าง'}</p>
 
           <div className="tm-editor-metadata">
-            <MetadataField icon={Circle} label="Status"><div className="tm-editor-select-wrap"><select aria-label="Status" value={draft.status} onChange={(event) => update('status', event.target.value)} disabled={readonly || busy}>
+            <MetadataField icon={Circle} label="สถานะงาน"><div className="tm-editor-select-wrap"><select aria-label="Status" value={draft.status} onChange={(event) => update('status', event.target.value)} disabled={readonly || busy}>
               {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select><ChevronDown size={13} /></div></MetadataField>
-            <MetadataField icon={Flag} label="Priority"><div className="tm-editor-select-wrap"><select aria-label="Priority" value={draft.priority} onChange={(event) => update('priority', event.target.value)} disabled={readonly || busy}>
+            <MetadataField icon={Flag} label="ความสำคัญ"><div className="tm-editor-select-wrap"><select aria-label="Priority" value={draft.priority} onChange={(event) => update('priority', event.target.value)} disabled={readonly || busy}>
               {PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select><ChevronDown size={13} /></div></MetadataField>
-            <MetadataField icon={CalendarDays} label="Due date"><input type="date" aria-label="Due date" max="9999-12-31" value={draft.dueDate} onChange={(event) => update('dueDate', event.target.value)} disabled={readonly || busy} /></MetadataField>
-            <MetadataField icon={UserRound} label="Assignees" help="ผู้รับผิดชอบ · เลือกได้หลายคน" wide>
+            <MetadataField icon={CalendarDays} label="กำหนดส่ง"><input type="date" aria-label="Due date" max="9999-12-31" value={draft.dueDate} onChange={(event) => update('dueDate', event.target.value)} disabled={readonly || busy} /></MetadataField>
+            <MetadataField icon={UserRound} label="ผู้รับผิดชอบ" help="เลือกได้หลายคน สมาชิกจะได้รับแจ้งเตือนเมื่อมอบหมายงาน" wide>
               <MultiSelect label="Assignees" value={draft.assigneeIds} options={members.map((member) => ({ value: member.id, label: member.name, description: member.email, color: member.avatarColor }))}
                 onChange={(values) => update('assigneeIds', values)} variant="assignee" placeholder="เลือกผู้รับผิดชอบ…" disabled={busy} readonly={readonly} maxSelected={50} />
-            </MetadataField>
-            <MetadataField icon={AlignLeft} label="Type Content" help="รูปแบบงาน · เลือกหลายประเภทได้" wide>
-              <MultiSelect label="Type Content" value={draft.contentTypes} options={contentCatalog} onChange={(values) => update('contentTypes', values)}
-                variant="type" placeholder="เลือกประเภทคอนเทนต์…" disabled={busy} readonly={readonly} onPendingChange={setAddingTag} maxSelected={20}
-                onCreate={onAddTag && !readonly ? (value) => addTag('contentType', value) : undefined} />
-            </MetadataField>
-            <MetadataField icon={Link2} label="Channels" help="ช่องทางเผยแพร่ · เลือกได้หลายช่องทาง" wide>
-              <MultiSelect label="Channels" value={draft.channels} options={channelCatalog} onChange={(values) => update('channels', values)}
-                variant="channel" placeholder="เลือกช่องทางเผยแพร่…" disabled={busy} readonly={readonly} onPendingChange={setAddingTag} maxSelected={20}
-                onCreate={onAddTag && !readonly ? (value) => addTag('channel', value) : undefined} />
             </MetadataField>
             {(project?.fields || []).map((field) => <MetadataField key={field.id} icon={AlignLeft} label={field.name}>
               {field.type === 'select' ? <div className="tm-editor-select-wrap"><select aria-label={field.name} value={draft.customFields[field.id] || ''}
                 onChange={(event) => update('customFields', { ...draft.customFields, [field.id]: event.target.value })} disabled={readonly || busy}>
-                <option value="">Not set</option>{(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
-              </select><ChevronDown size={13} /></div> : <input aria-label={field.name} placeholder="Not set" value={draft.customFields[field.id] || ''}
+                <option value="">ยังไม่ระบุ</option>{(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+              </select><ChevronDown size={13} /></div> : <input aria-label={field.name} placeholder="ยังไม่ระบุ" value={draft.customFields[field.id] || ''}
                 onChange={(event) => update('customFields', { ...draft.customFields, [field.id]: event.target.value })} disabled={readonly || busy} maxLength={2000} />}
             </MetadataField>)}
           </div>
 
+          <section className="tm-editor-publishing-plan" aria-label="แผนคอนเทนต์และช่องทางเผยแพร่">
+            <div className="tm-editor-plan-heading"><div><h3>แผนคอนเทนต์และการโพสต์</h3><p>เลือกว่าต้องทำอะไร และจะนำไปโพสต์ที่ไหน · เลือกได้หลายรายการ</p></div><span>{draft.contentTypes.length} รูปแบบ <span>·</span> {draft.channels.length} ช่องทาง</span></div>
+            <div className="tm-editor-plan-grid">
+              <MultiSelect label="Type Content" title="ประเภทคอนเทนต์" description="งานนี้ต้องทำคอนเทนต์แบบไหน" display="inline" value={draft.contentTypes} options={contentCatalog} onChange={(values) => update('contentTypes', values)}
+                variant="type" disabled={busy} readonly={readonly} onPendingChange={setAddingTag} maxSelected={20}
+                onCreate={onAddTag && !readonly ? (value) => addTag('contentType', value) : undefined} />
+              <MultiSelect label="Channels" title="ช่องทางโพสต์" description="ต้องโพสต์ที่ไหนบ้าง" display="inline" value={draft.channels} options={channelCatalog} onChange={(values) => update('channels', values)}
+                variant="channel" disabled={busy} readonly={readonly} onPendingChange={setAddingTag} maxSelected={20}
+                onCreate={onAddTag && !readonly ? (value) => addTag('channel', value) : undefined} />
+            </div>
+          </section>
+
           <div className="tm-editor-section">
-            <label className="tm-editor-section-title" htmlFor="tm-editor-description"><AlignLeft size={17} />Description</label>
-            <textarea id="tm-editor-description" className="tm-editor-description" placeholder="Add a brief, context, or anything your team should know…" value={draft.description}
+            <label className="tm-editor-section-title" htmlFor="tm-editor-description"><AlignLeft size={17} />รายละเอียดและบรีฟงาน</label>
+            <textarea id="tm-editor-description" aria-label="Description" className="tm-editor-description" placeholder="ใส่บรีฟ แนวคิด หรือรายละเอียดที่ทีมต้องรู้…" value={draft.description}
               onChange={(event) => update('description', event.target.value)} rows={4} disabled={readonly || busy} maxLength={10000} />
           </div>
 
           <div className="tm-editor-section">
-            <div className="tm-editor-section-heading"><h3 className="tm-editor-section-title"><CheckSquare size={17} />Checklist
+            <div className="tm-editor-section-heading"><h3 className="tm-editor-section-title"><CheckSquare size={17} />งานย่อย / Checklist
               {draft.subtasks.length > 0 && <span className="tm-editor-counter">{completed}/{draft.subtasks.length}</span>}</h3></div>
             {draft.subtasks.length > 0 && <div className="tm-editor-progress-track"><div style={{ width: `${completed / draft.subtasks.length * 100}%` }} /></div>}
             <div className="tm-editor-checklist">
@@ -339,40 +345,41 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
                 {!readonly && <button className="tm-editor-icon-button tm-editor-item-remove" type="button" disabled={busy} aria-label={`Remove checklist item ${index + 1}`}
                   onClick={() => update('subtasks', draft.subtasks.filter((subtask) => subtask.id !== item.id))}><X size={15} /></button>}
               </div>)}
-              {!readonly && draft.subtasks.length < 100 && <div className="tm-editor-add-checklist"><Plus size={15} /><input aria-label="New checklist item" placeholder="Add a checklist item…" value={subtaskTitle} disabled={busy}
+              {!readonly && draft.subtasks.length < 100 && <div className="tm-editor-add-checklist"><Plus size={15} /><input aria-label="New checklist item" placeholder="เพิ่มสิ่งที่ต้องทำในงานนี้…" value={subtaskTitle} disabled={busy}
                 onChange={(event) => { setSubtaskTitle(event.target.value); setDirty(true); }} maxLength={300} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSubtask(); } }} />
-                <button type="button" onClick={addSubtask} disabled={busy || !subtaskTitle.trim()}>Add</button></div>}
-              {readonly && !draft.subtasks.length && <p className="tm-editor-empty">No checklist items yet.</p>}
+                <button type="button" aria-label="Add" onClick={addSubtask} disabled={busy || !subtaskTitle.trim()}>เพิ่ม</button></div>}
+              {readonly && !draft.subtasks.length && <p className="tm-editor-empty">ยังไม่มีงานย่อย</p>}
             </div>
           </div>
 
           <div className="tm-editor-section tm-editor-links-section">
-            <div className="tm-editor-section-heading"><h3 className="tm-editor-section-title"><Link2 size={17} />Files & links
+            <div className="tm-editor-section-heading"><h3 className="tm-editor-section-title"><Link2 size={17} />ไฟล์และลิงก์แนบ
               {draft.links.length > 0 && <span className="tm-editor-counter">{draft.links.length}</span>}</h3>
-              {!readonly && <button className="tm-editor-text-button" type="button" disabled={busy || draft.links.length >= 30} onClick={() => update('links', [...draft.links, { label: '', url: '' }])}><Plus size={14} />Add link</button>}
+              {!readonly && <button className="tm-editor-text-button" type="button" aria-label="Add link" disabled={busy || draft.links.length >= 30} onClick={() => update('links', [...draft.links, { label: '', url: '' }])}><Plus size={14} />เพิ่มลิงก์</button>}
             </div>
-            {!draft.links.length && <div className="tm-editor-link-empty"><Link2 size={20} /><span>Keep references, Drive files, and designs in one place.</span></div>}
+            {!draft.links.length && <div className="tm-editor-link-empty"><Link2 size={20} /><span>แนบ Google Drive, ไฟล์ออกแบบ หรือแหล่งอ้างอิงไว้กับงานนี้</span></div>}
             {draft.links.map((link, index) => readonly ? <a className="tm-editor-read-link" key={index} href={safeUrl(link.url) || undefined} target="_blank" rel="noopener noreferrer"><Link2 size={15} />{link.label || link.url}</a> : <div className="tm-editor-link-row" key={index}>
               <div className="tm-editor-link-icon"><Link2 size={17} /></div><div className="tm-editor-link-inputs">
-                <input aria-label={`Link ${index + 1} name`} placeholder="Link name, e.g. Design files" value={link.label || ''} onChange={(event) => updateLink(index, 'label', event.target.value)} maxLength={100} disabled={busy} />
+                <input aria-label={`Link ${index + 1} name`} placeholder="ชื่อลิงก์ เช่น ไฟล์ออกแบบ" value={link.label || ''} onChange={(event) => updateLink(index, 'label', event.target.value)} maxLength={100} disabled={busy} />
                 <input type="url" aria-label={`Link ${index + 1} URL`} placeholder="https://…" value={link.url || ''} onChange={(event) => updateLink(index, 'url', event.target.value)} maxLength={2000} disabled={busy} />
               </div><button className="tm-editor-icon-button" type="button" aria-label={`Remove link ${index + 1}`} disabled={busy} onClick={() => update('links', draft.links.filter((_, linkIndex) => linkIndex !== index))}><X size={16} /></button>
             </div>)}
           </div>
 
           {error && <div className="tm-editor-error" ref={noticeRef} role="alert">{error}</div>}
-          {deletePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>Delete this task?</strong><p>The task and its checklist will be permanently removed.</p></div>
-            <div className="tm-editor-confirm-actions"><button type="button" className="tm-editor-secondary-button" disabled={busy} onClick={() => setDeletePrompt(false)}>Keep task</button>
-              <button type="button" className="tm-editor-danger-button" disabled={busy} onClick={deleteTask}>{deleting && <LoaderCircle className="tm-editor-spin" size={15} />}Delete task</button></div></div>}
-          {closePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>Leave without saving?</strong><p>Your changes to this task will be discarded.</p></div>
-            <div className="tm-editor-confirm-actions"><button type="button" className="tm-editor-secondary-button" onClick={() => setClosePrompt(false)}>Keep editing</button>
-              <button type="button" className="tm-editor-danger-button" onClick={onClose}>Discard changes</button></div></div>}
+          {deletePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>ต้องการลบงานนี้หรือไม่?</strong><p>งานและรายการงานย่อยจะถูกลบถาวร</p></div>
+            <div className="tm-editor-confirm-actions"><button type="button" aria-label="Keep task" className="tm-editor-secondary-button" disabled={busy} onClick={() => setDeletePrompt(false)}>เก็บงานไว้</button>
+              <button type="button" aria-label="Delete task" className="tm-editor-danger-button" disabled={busy} onClick={deleteTask}>{deleting && <LoaderCircle className="tm-editor-spin" size={15} />}ลบงาน</button></div></div>}
+          {closePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>ยังไม่ได้บันทึกการเปลี่ยนแปลง</strong><p>บันทึกก่อนออก หรือยกเลิกสิ่งที่แก้ไขในงานนี้</p></div>
+            <div className="tm-editor-confirm-actions"><button type="button" aria-label="Keep editing" className="tm-editor-secondary-button" onClick={() => setClosePrompt(false)}>แก้ไขต่อ</button>
+              <button type="button" aria-label="Discard changes" className="tm-editor-danger-button" onClick={onClose}>ไม่บันทึกและออก</button></div></div>}
         </div>
 
         <footer className="tm-editor-footer">
-          <div>{isExisting && !readonly && onDelete && <button type="button" className="tm-editor-delete-button" onClick={() => { setDeletePrompt(true); setClosePrompt(false); }} disabled={busy}><Trash2 size={16} /><span>Delete task</span></button>}</div>
-          <div className="tm-editor-footer-actions"><button type="button" className="tm-editor-secondary-button" onClick={requestClose} disabled={busy}>{readonly ? 'Close' : 'Cancel'}</button>
-            {!readonly && <button className="tm-editor-primary-button" type="submit" disabled={busy}>{saving ? <LoaderCircle className="tm-editor-spin" size={16} /> : <Check size={16} />}{saving ? 'Saving…' : isExisting ? 'Save changes' : 'Create task'}</button>}</div>
+          <div className="tm-editor-footer-leading">{!readonly && <span className={`tm-editor-save-state ${dirty ? 'tm-editor-save-state-dirty' : ''}`} role="status">{dirty ? <span className="tm-editor-unsaved-dot" /> : <CheckCircle2 size={16} />}{saving ? 'กำลังบันทึก…' : dirty ? 'มีการแก้ไขที่ยังไม่บันทึก' : isExisting ? 'ข้อมูลปัจจุบัน' : 'พร้อมสร้างงานใหม่'}</span>}
+            {isExisting && !readonly && onDelete && <button type="button" aria-label="Delete task" className="tm-editor-delete-button" onClick={() => { setDeletePrompt(true); setClosePrompt(false); }} disabled={busy}><Trash2 size={16} /><span>ลบงาน</span></button>}</div>
+          <div className="tm-editor-footer-actions"><button type="button" aria-label={readonly ? 'Close' : 'Cancel'} className="tm-editor-secondary-button" onClick={requestClose} disabled={busy}>{readonly ? 'ปิด' : 'ยกเลิก'}</button>
+            {!readonly && <button className="tm-editor-primary-button" aria-label={saving ? 'Saving…' : isExisting ? 'Save changes' : 'Create task'} type="submit" disabled={busy}>{saving ? <LoaderCircle className="tm-editor-spin" size={17} /> : <Check size={17} />}{saving ? 'กำลังบันทึก…' : isExisting ? 'บันทึกการเปลี่ยนแปลง' : 'สร้างงาน'}</button>}</div>
         </footer>
       </form>
     </section>

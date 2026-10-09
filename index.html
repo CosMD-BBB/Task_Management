@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0e8778" />
+    <meta name="theme-color" content="#f5f6fb" />
+    <style>html{background:#f5f6fb}html[data-theme="dark"]{background:#10131b}</style>
+    <script>
+      (() => {
+        let saved;
+        try { saved = localStorage.getItem('room-theme'); } catch {}
+        const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#10131b' : '#f5f6fb');
+      })();
+    </script>
     <meta name="description" content="Room — a calm place for your team's projects, tasks and content calendar." />
     <title>Room — Team workspace</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

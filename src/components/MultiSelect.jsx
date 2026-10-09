@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, LoaderCircle, Plus, Search, X } from 'lucide-react';
+import { BarChart3, Camera, Check, ChevronDown, Clapperboard, FileText, Globe, Image, Images, LoaderCircle, Music2, Plus, Search, ShoppingBag, X } from 'lucide-react';
 import './multi-select.css';
 
 const initials = (name = '') => name.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 2).join('').toUpperCase();
@@ -9,9 +9,17 @@ function OptionMark({ option, variant }) {
   return <span className="tm-multi-color-dot" style={{ background: option.color || '#7c69bd' }} />;
 }
 
-export default function MultiSelect({ label, value = [], options = [], onChange, onCreate, disabled = false, readonly = false, variant = 'tag', placeholder = 'เลือกตัวเลือก', onPendingChange, maxSelected = Infinity }) {
+function ChoiceIcon({ option, variant }) {
+  const icons = { Video: Clapperboard, VDO: Clapperboard, Reel: Clapperboard, 'Photo album': Images, Infographic: BarChart3, 'Single Post': Image, Story: Camera, Blog: FileText, 'ขายของ': ShoppingBag, Instagram: Camera, TikTok: Music2, YouTube: Clapperboard, Website: Globe };
+  const Icon = icons[option.value] || (variant === 'channel' ? Globe : FileText);
+  return <span className="tm-multi-choice-icon" aria-hidden="true"><Icon size={18} /></span>;
+}
+
+export default function MultiSelect({ label, title, description, display = 'popup', value = [], options = [], onChange, onCreate, disabled = false, readonly = false, variant = 'tag', placeholder = 'เลือกตัวเลือก', onPendingChange, maxSelected = Infinity }) {
+  const inline = display === 'inline';
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [newOption, setNewOption] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [createdOptions, setCreatedOptions] = useState([]);
@@ -39,8 +47,10 @@ export default function MultiSelect({ label, value = [], options = [], onChange,
   const searchTerm = search.trim();
   const filteredOptions = allOptions.filter((option) => `${option.label} ${option.description || ''}`.toLocaleLowerCase().includes(searchTerm.toLocaleLowerCase()));
   const matchingOption = allOptions.find((option) => option.label.toLocaleLowerCase() === searchTerm.toLocaleLowerCase());
+  const creationTerm = inline ? newOption.trim() : searchTerm;
+  const matchingCreation = allOptions.find((option) => option.label.toLocaleLowerCase() === creationTerm.toLocaleLowerCase());
   const atLimit = value.length >= maxSelected;
-  const canCreate = Boolean(onCreate && searchTerm && !matchingOption && !readonly && !atLimit);
+  const canCreate = Boolean(onCreate && creationTerm && !matchingCreation && !readonly && !atLimit);
   const selectedOptions = value.map((selected) => allOptions.find((option) => option.value === selected)).filter(Boolean);
 
   useEffect(() => {
@@ -81,7 +91,7 @@ export default function MultiSelect({ label, value = [], options = [], onChange,
 
   async function createOption() {
     if (!canCreate || creating || disabled) return;
-    const newValue = searchTerm;
+    const newValue = creationTerm;
     setError('');
     setCreating(true);
     onPendingChange?.(true);
@@ -92,6 +102,7 @@ export default function MultiSelect({ label, value = [], options = [], onChange,
       setCreatedOptions((current) => [...current, persistedOption]);
       if (!valueRef.current.includes(persistedOption.value)) onChange?.([...valueRef.current, persistedOption.value]);
       setSearch('');
+      setNewOption('');
     } catch (createError) {
       if (mountedRef.current) setError(createError?.message ? `เพิ่มตัวเลือกไม่สำเร็จ: ${createError.message}` : 'เพิ่มตัวเลือกไม่สำเร็จ กรุณาลองอีกครั้ง');
     } finally {
@@ -104,6 +115,13 @@ export default function MultiSelect({ label, value = [], options = [], onChange,
   }
 
   function handleKey(event) {
+    if (inline) {
+      if (event.key === 'Enter' && event.target.getAttribute('aria-label') === `New ${label} option`) {
+        event.preventDefault();
+        createOption();
+      }
+      return;
+    }
     if (!open) return;
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -131,16 +149,43 @@ export default function MultiSelect({ label, value = [], options = [], onChange,
     }
   }
 
+  const selectedChips = <div className="tm-multi-selected" aria-label={`Selected ${label}`}>
+    {selectedOptions.map((option) => <span className="tm-multi-chip" key={option.value} style={{ '--chip-color': option.color || (variant === 'channel' ? '#477b9e' : '#7c69bd') }}>
+      <OptionMark option={option} variant={variant} /><span className="tm-multi-chip-label" title={option.label}>{option.label}</span>
+      {!readonly && <button type="button" aria-label={`Remove ${option.label} from ${label}`} disabled={disabled || creating} onClick={() => toggle(option)}><X size={13} /></button>}
+    </span>)}
+    {!selectedOptions.length && <span className="tm-multi-placeholder">{variant === 'assignee' ? 'ยังไม่มีผู้รับผิดชอบ' : 'ยังไม่ได้เลือก — กดตัวเลือกด้านล่างได้เลย'}</span>}
+  </div>;
+
+  if (inline) return <section className={`tm-multi-select tm-multi-inline tm-multi-${variant} ${readonly ? 'tm-multi-readonly' : ''}`} ref={containerRef} onKeyDown={handleKey}
+    role="group" aria-label={`${label} options`}>
+    <div className="tm-multi-inline-heading"><div><span className="tm-multi-eyebrow">{label}</span><h3>{title || label}</h3><p>{description}</p></div><span className="tm-multi-count" aria-live="polite">เลือก {value.length}</span></div>
+    <div className="tm-multi-inline-summary">{selectedChips}</div>
+    <div className="tm-multi-choices-caption"><span>เลือกได้หลายรายการ</span>{!readonly && <button type="button" aria-label={`Clear ${label}`} disabled={!value.length || disabled || creating} onClick={() => onChange?.([])}>ล้างที่เลือก</button>}</div>
+    <label className="tm-multi-search tm-multi-inline-search"><Search size={16} /><input ref={searchRef} aria-label={`Search ${label}`} placeholder="ค้นหาตัวเลือก…"
+      value={search} maxLength={100} disabled={creating || disabled} onChange={(event) => setSearch(event.target.value)} />
+      {search && !creating && <button type="button" aria-label={`Clear search ${label}`} onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={14} /></button>}
+    </label>
+    <div className="tm-multi-inline-options">
+      {filteredOptions.map((option) => <label className={`tm-multi-choice ${value.includes(option.value) ? 'tm-multi-choice-selected' : ''}`} key={option.value} style={{ '--chip-color': option.color || '#7c69bd' }}>
+        <input type="checkbox" aria-label={option.label} checked={value.includes(option.value)} disabled={readonly || disabled || creating || (atLimit && !value.includes(option.value))} onChange={() => toggle(option)} />
+        <ChoiceIcon option={option} variant={variant} /><span className="tm-multi-choice-text"><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
+        <span className="tm-multi-checkbox"><Check size={13} strokeWidth={3} /></span>
+      </label>)}
+      {!filteredOptions.length && <p className="tm-multi-no-results">ไม่พบตัวเลือก ลองค้นหาด้วยคำอื่น หรือเพิ่มตัวเลือกใหม่ด้านล่าง</p>}
+    </div>
+    {onCreate && !readonly && <div className="tm-multi-custom-option"><label htmlFor={`${id}-new`}>เพิ่มตัวเลือกของทีม</label><div>
+      <input id={`${id}-new`} aria-label={`New ${label} option`} placeholder={variant === 'channel' ? 'เช่น Shopee Live, งานอีเวนต์' : 'เช่น รีวิวสินค้า, ขายของ'} value={newOption} maxLength={100} disabled={creating || disabled || atLimit} onChange={(event) => { setNewOption(event.target.value); setError(''); }} />
+      <button type="button" aria-label={`Add ${label} option`} className="tm-multi-create" disabled={!canCreate || creating || disabled} onClick={createOption}>{creating ? <LoaderCircle size={16} className="tm-multi-spin" /> : <Plus size={16} />}<span>{creating ? 'กำลังเพิ่ม' : 'เพิ่ม'}</span></button>
+    </div><small>{matchingCreation && creationTerm ? 'มีตัวเลือกนี้แล้ว เลือกจากรายการด้านบนได้เลย' : 'ตัวเลือกใหม่จะใช้ต่อในโปรเจกต์นี้ได้ และเลือกให้งานนี้ทันที'}</small></div>}
+    {atLimit && <p className="tm-multi-limit">เลือกได้สูงสุด {maxSelected} รายการ นำบางรายการออกเพื่อเลือกเพิ่มเติม</p>}
+    {error && <p className="tm-multi-error" role="alert">{error}</p>}
+  </section>;
+
   return <div className={`tm-multi-select tm-multi-${variant} ${open ? 'tm-multi-is-open' : ''} ${readonly ? 'tm-multi-readonly' : ''}`} ref={containerRef} onKeyDown={handleKey}
     onBlur={(event) => { if (!creating && event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) close(); }}>
     <div className="tm-multi-control">
-      <div className="tm-multi-selected" aria-label={`Selected ${label}`}>
-        {selectedOptions.map((option) => <span className="tm-multi-chip" key={option.value} style={{ '--tm-chip-color': option.color || (variant === 'channel' ? '#477b9e' : '#7c69bd') }}>
-          <OptionMark option={option} variant={variant} /><span className="tm-multi-chip-label" title={option.label}>{option.label}</span>
-          {!readonly && <button type="button" aria-label={`Remove ${option.label} from ${label}`} disabled={disabled || creating} onClick={() => toggle(option)}><X size={11} /></button>}
-        </span>)}
-        {!selectedOptions.length && readonly && <span className="tm-multi-placeholder">{variant === 'assignee' ? 'Unassigned' : 'ยังไม่ได้เลือก'}</span>}
-      </div>
+      {(selectedOptions.length > 0 || readonly) && selectedChips}
       {!readonly && <button type="button" className={`tm-multi-trigger ${!selectedOptions.length ? 'tm-multi-trigger-empty' : ''}`} ref={triggerRef}
         aria-label={label} aria-expanded={open} aria-controls={`${id}-options`} disabled={disabled || creating}
         onClick={() => { if (open) close(); else { setSearch(''); setError(''); setOpen(true); } }}>
