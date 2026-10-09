@@ -1,9 +1,9 @@
 {
-  "status": "offline",
-  "url": "https://bags-early-webshots-people.trycloudflare.com",
-  "sourceCommit": "61decd9b8168006b54bbdc05091c99c5c44c5384",
-  "startedAt": "2026-10-09T05:14:42.652Z",
-  "expiresAt": "2026-10-09T05:44:42.652Z",
-  "updatedAt": "2026-10-09T05:44:44.597Z",
+  "status": "online",
+  "url": "https://tri-dialogue-warriors-licensing.trycloudflare.com",
+  "sourceCommit": "96979f7136c8b5de15a8554979d8c00b0e16c6f4",
+  "startedAt": "2026-10-09T05:47:54.792Z",
+  "expiresAt": "2026-10-09T06:17:54.792Z",
+  "updatedAt": "2026-10-09T05:47:54.792Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
