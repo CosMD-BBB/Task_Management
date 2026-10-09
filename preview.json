@@ -1,9 +1,9 @@
 {
-  "status": "online",
+  "status": "offline",
   "url": "https://tri-dialogue-warriors-licensing.trycloudflare.com",
   "sourceCommit": "96979f7136c8b5de15a8554979d8c00b0e16c6f4",
   "startedAt": "2026-10-09T05:47:54.792Z",
   "expiresAt": "2026-10-09T06:17:54.792Z",
-  "updatedAt": "2026-10-09T05:47:54.792Z",
+  "updatedAt": "2026-10-09T06:17:56.764Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
