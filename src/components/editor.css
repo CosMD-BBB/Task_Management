@@ -48,5 +48,6 @@
 .tm-editor-tabs>button[aria-selected="true"]>span:not(.tm-editor-comment-draft-indicator){color:var(--accent);background:var(--accent-soft)}
 .tm-editor-tabs>button>.tm-editor-comment-draft-indicator{width:7px;height:7px;border-radius:50%;background:var(--warning);padding:0}.tm-editor-tabs>button:disabled{opacity:.6;cursor:default}
 .tm-editor-details[hidden],.tm-editor-discussion[hidden]{display:none!important}
+.tm-editor-details>.tm-editor-brief-section{margin-top:0;padding-top:0;border-top:0;margin-bottom:24px}
 @media(max-width:650px){.tm-editor-tabs{gap:19px;margin-bottom:20px}.tm-editor-tabs>button{font-size:13px;gap:7px}}
 @media(max-width:650px){.tm-editor-footer{flex-wrap:wrap;gap:6px;padding:10px 16px 13px}.tm-editor-footer-leading{flex:0 0 100%;justify-content:space-between;min-height:20px}.tm-editor-footer-leading:empty{display:none}.tm-editor-save-state{display:inline-flex;font-size:11px}.tm-editor-delete-button{padding:2px 4px;font-size:11px}.tm-editor-delete-button>span{display:inline}.tm-editor-footer-actions{width:100%;justify-content:flex-end}.tm-editor-primary-button{flex:1}.tm-editor-footer-actions>.tm-editor-secondary-button{min-width:85px}}

@@ -321,6 +321,12 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
 
           <div className="tm-editor-details" role="tabpanel" aria-label="รายละเอียดงาน" id="tm-task-details-panel" aria-labelledby="tm-task-details-tab" hidden={activeTab !== 'details'}>
 
+          <div className="tm-editor-section tm-editor-brief-section">
+            <label className="tm-editor-section-title" htmlFor="tm-editor-description"><AlignLeft size={17} />รายละเอียดและบรีฟงาน</label>
+            <textarea id="tm-editor-description" aria-label="Description" className="tm-editor-description" placeholder="ใส่บรีฟ แนวคิด หรือรายละเอียดที่ทีมต้องรู้…" value={draft.description}
+              onChange={(event) => update('description', event.target.value)} rows={4} disabled={readonly || busy} maxLength={10000} />
+          </div>
+
           <div className="tm-editor-metadata">
             <MetadataField icon={Circle} label="สถานะงาน"><div className="tm-editor-select-wrap"><select aria-label="Status" value={draft.status} onChange={(event) => update('status', event.target.value)} disabled={readonly || busy}>
               {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -353,12 +359,6 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
                 onCreate={onAddTag && !readonly ? (value) => addTag('channel', value) : undefined} />
             </div>
           </section>
-
-          <div className="tm-editor-section">
-            <label className="tm-editor-section-title" htmlFor="tm-editor-description"><AlignLeft size={17} />รายละเอียดและบรีฟงาน</label>
-            <textarea id="tm-editor-description" aria-label="Description" className="tm-editor-description" placeholder="ใส่บรีฟ แนวคิด หรือรายละเอียดที่ทีมต้องรู้…" value={draft.description}
-              onChange={(event) => update('description', event.target.value)} rows={4} disabled={readonly || busy} maxLength={10000} />
-          </div>
 
           <div className="tm-editor-section">
             <div className="tm-editor-section-heading"><h3 className="tm-editor-section-title"><CheckSquare size={17} />งานย่อย / Checklist

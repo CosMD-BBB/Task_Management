@@ -8,6 +8,7 @@ These are user requirements for this CosMD team workspace. Preserve them during 
 - Content types must have vivid, visibly different colors. Preserve each label's color across selection and task views; custom labels also need stable colors.
 - Keep names/icons and visible selection checks alongside color. Text must remain readable in both themes.
 - Task content types, posting channels, and assignees support multiple choices. Keep these choices immediately available from task fields, with a clear save action.
+- Put the task description and brief first in the details panel, below the task name and before status, assignees, content types, and posting channels.
 - Tasks have a persistent discussion for comments, captions, and revision requests. Preserve multiline text, authors, timestamps, and @mentions of project members, with in-app notifications that open the mentioned comment. Keep Viewer access read-only and render messages as safe plain text.
 
 The accessible prior conversation “สร้างสกิลดีไซน์เว็บไซต์” includes the original explicit font instruction and the saved CosMD typography profile. This file retains the requirements for future work in this repository; it does not claim to write to an external Personal Live service.
