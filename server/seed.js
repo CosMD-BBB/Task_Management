@@ -111,6 +111,22 @@ async function seedDemoData(db) {
       await db.run('INSERT INTO tasks (id, project_id, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', [
         task.id, task.projectId, JSON.stringify(task), task.createdAt, task.updatedAt,
       ]);
+      if (projectIndex === 0 && index === 0) {
+        const sampleComments = [
+          { author: people[1], kind: 'caption', body: 'ดูแลผิวลูกน้อยอย่างอ่อนโยนในทุกวัน 💛\nเคล็ดลับง่าย ๆ ที่คุณพ่อคุณแม่เริ่มได้วันนี้\n\n#Regagar #GentleCare', mentions: [] },
+          { author: people[2], kind: 'comment', body: `@${people[1].name} แนบตัวอย่างภาพแล้ว ช่วยตรวจแคปชั่นก่อนส่งทีมอนุมัติได้เลย`,
+            mentions: [{ userId: people[1].id, start: 0, end: people[1].name.length + 1, name: people[1].name }] },
+          { author: people[0], kind: 'revision', body: 'ปรับหัวข้อให้อ่านง่ายขึ้นบนมือถือ และเพิ่มข้อความแนะนำวิธีใช้ในภาพสุดท้าย', mentions: [] },
+        ];
+        for (const [commentIndex, comment] of sampleComments.entries()) {
+          const createdAt = new Date(Date.now() - (sampleComments.length - commentIndex) * 60 * 1000).toISOString();
+          await db.run(`INSERT INTO task_comments (id, task_id, project_id, author_id, author_name, author_avatar_color, body, kind, mentions_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+            randomUUID(), task.id, project.id, comment.author.id, comment.author.name, comment.author.avatar_color,
+            comment.body, comment.kind, JSON.stringify(comment.mentions), createdAt, createdAt,
+          ]);
+        }
+      }
       if (projectIndex === 0 && index === 9) {
         await db.run(`INSERT INTO notifications (id, user_id, actor_id, project_id, task_id, type, title, body, created_at, read_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [

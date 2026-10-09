@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { ArrowUp, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, Flag, GripVertical, Link2, ListTodo, MessageSquare, Plus, X } from 'lucide-react';
 import { tagAppearanceStyle } from '../tagAppearance.js';
 import './views.css';
@@ -111,11 +111,16 @@ function StatusBadge({ status, showLabel = true }) {
   return <span className="tm-status-badge" style={{ '--status-color': item.color, '--status-light': item.light }}><span className="tm-status-dot">{status === 'done' && <Check size={9} />}</span>{showLabel && item.label}</span>;
 }
 
+function TaskCommentButton({ task, onOpenComments, dragging = false }) {
+  const count = Math.max(0, Math.floor(Number(task.commentsCount) || 0));
+  return <button type="button" className="tm-comment-button" aria-label={`ความคิดเห็นของ ${task.title}`} title={`เปิดความคิดเห็น · ${count} ข้อความ`} draggable={false} onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }} onClick={event => { event.stopPropagation(); if (!dragging) onOpenComments(task); }}><MessageSquare size={13} aria-hidden="true" /><span>{count}</span></button>;
+}
+
 function EmptyState({ hasSearch, onCreate, canEdit }) {
   return <div className="tm-empty"><span className="tm-empty-icon"><ListTodo size={27} /></span><h3>{hasSearch ? 'ไม่พบงานที่ตรงกับการค้นหา' : 'เริ่มต้นด้วยงานแรกของทีม'}</h3><p>{hasSearch ? 'ลองเปลี่ยนคำค้น หรือเลือกแสดงงานทั้งหมด' : 'เพิ่มงาน เลือกผู้รับผิดชอบ แล้วระบุคอนเทนต์และช่องทางที่ต้องโพสต์'}</p>{canEdit && !hasSearch && <button className="tm-create-button" onClick={() => onCreate({})}><Plus size={16} />เพิ่มงานแรก</button>}</div>;
 }
 
-function ListView({ tasks, project, onEdit, onStatusChange, onCreate, canEdit, pending }) {
+function ListView({ tasks, project, onEdit, onOpenComments, onStatusChange, onCreate, canEdit, pending }) {
   const [collapsed, setCollapsed] = useState({});
   const members = useMemo(() => Object.fromEntries((project?.members || []).map(member => [member.userId || member.user?.id, member.user])), [project]);
   const fields = project?.fields || [];
@@ -134,7 +139,7 @@ function ListView({ tasks, project, onEdit, onStatusChange, onCreate, canEdit, p
           <table className="tm-task-table">
             <thead><tr><th className="tm-name-heading">ชื่องาน<span>Task</span></th><th>สถานะ<span>Status</span></th><th>ความสำคัญ<span>Priority</span></th><th>ผู้รับผิดชอบ<span>Assignees</span></th><th>กำหนดส่ง<span>Due date</span></th><th>ประเภทคอนเทนต์<span>เลือกได้หลายแบบ</span></th><th>ช่องทางโพสต์<span>เลือกได้หลายช่องทาง</span></th><th>ไฟล์และลิงก์<span>Attachments</span></th>{fields.map(field => <th key={field.id}>{field.name}</th>)}</tr></thead>
             <tbody>{grouped.map(task => <tr key={task.id} className={task.status === 'done' ? 'tm-complete-row' : ''}>
-              <td><div className="tm-task-name-cell"><span className="tm-task-status-marker" style={{ color: status.color }} aria-hidden="true"><Circle size={14} /></span><button className="tm-task-title" onClick={() => onEdit(task)}>{task.title}</button>{task.description && <MessageSquare size={13} className="tm-description-indicator" aria-label="Has description" />}{!!task.subtasks?.length && <span className="tm-subtask-progress" title="Completed checklist items"><CheckCircle2 size={12} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}</div></td>
+              <td><div className="tm-task-name-cell"><span className="tm-task-status-marker" style={{ color: status.color }} aria-hidden="true"><Circle size={14} /></span><button className="tm-task-title" onClick={() => onEdit(task)}>{task.title}</button>{!!task.subtasks?.length && <span className="tm-subtask-progress" title="Completed checklist items"><CheckCircle2 size={12} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}<TaskCommentButton task={task} onOpenComments={onOpenComments} /></div></td>
               <td data-label="สถานะ"><TaskStatusSelect task={task} canEdit={canEdit} pending={pending.has(task.id)} onStatusChange={onStatusChange} /></td>
               <td data-label="ความสำคัญ"><Priority value={task.priority} /></td>
               <td data-label="ผู้รับผิดชอบ"><TaskAssignees task={task} members={members} /></td>
@@ -153,9 +158,10 @@ function ListView({ tasks, project, onEdit, onStatusChange, onCreate, canEdit, p
   </div>;
 }
 
-function BoardView({ tasks, project, onEdit, onStatusChange, onCreate, canEdit, pending }) {
+function BoardView({ tasks, project, onEdit, onOpenComments, onStatusChange, onCreate, canEdit, pending }) {
   const [dragging, setDragging] = useState(null);
   const [target, setTarget] = useState(null);
+  const dragBlockedTask = useRef(null);
   const members = useMemo(() => Object.fromEntries((project?.members || []).map(member => [member.userId || member.user?.id, member.user])), [project]);
   function drop(event, status) {
     event.preventDefault();
@@ -170,12 +176,12 @@ function BoardView({ tasks, project, onEdit, onStatusChange, onCreate, canEdit, 
       const grouped = tasks.filter(task => task.status === status.id);
       return <section className={`tm-board-column ${target === status.id ? 'tm-board-drop-target' : ''}`} key={status.id} onDragOver={event => { if (canEdit && dragging) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setTarget(status.id); } }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setTarget(null); }} onDrop={event => drop(event, status.id)}>
         <div className="tm-board-heading"><StatusBadge status={status.id} /><span className="tm-group-count">{grouped.length}</span>{canEdit && <button className="tm-icon-button" aria-label={`Add ${status.label.toLowerCase()} task`} onClick={() => onCreate({ status: status.id })}><Plus size={16} /></button>}</div>
-        <div className="tm-board-cards">{grouped.map(task => <article className={`tm-board-card ${dragging === task.id ? 'tm-board-card-dragging' : ''} ${pending.has(task.id) ? 'tm-task-pending' : ''}`} key={task.id} draggable={canEdit && !pending.has(task.id)} onDragStart={event => { setDragging(task.id); event.dataTransfer.setData('text/plain', task.id); event.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { setDragging(null); setTarget(null); }}>
+        <div className="tm-board-cards">{grouped.map(task => <article className={`tm-board-card ${dragging === task.id ? 'tm-board-card-dragging' : ''} ${pending.has(task.id) ? 'tm-task-pending' : ''}`} key={task.id} draggable={canEdit && !pending.has(task.id)} onPointerDownCapture={event => { dragBlockedTask.current = event.target.closest('.tm-comment-button') ? task.id : null; }} onDragStart={event => { if (dragBlockedTask.current === task.id) { event.preventDefault(); return; } setDragging(task.id); event.dataTransfer.setData('text/plain', task.id); event.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { dragBlockedTask.current = null; setDragging(null); setTarget(null); }}>
           <div className="tm-card-top"><Priority value={task.priority} />{canEdit && <GripVertical size={14} className="tm-card-grip" aria-hidden="true" />}</div>
           <button className="tm-card-title" onClick={() => onEdit(task)}>{task.title}</button>
           {task.description && <p className="tm-card-description">{task.description}</p>}
           <div className="tm-card-tags"><TaskTagEditor task={task} kind="contentType" onEdit={onEdit} canEdit={canEdit} labeled /><TaskTagEditor task={task} kind="channel" onEdit={onEdit} canEdit={canEdit} labeled /></div>
-          <div className="tm-card-details"><TaskDate task={task} /><span className="tm-card-details-right">{!!task.links?.length && <span title={`${task.links.length} attached links`}><Link2 size={13} />{task.links.length}</span>}{!!task.subtasks?.length && <span title="Checklist progress"><CheckCircle2 size={13} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}<TaskAssignees task={task} members={members} compact /></span></div>
+          <div className="tm-card-details"><TaskDate task={task} /><span className="tm-card-details-right"><TaskCommentButton task={task} onOpenComments={onOpenComments} dragging={dragging === task.id} />{!!task.links?.length && <span title={`${task.links.length} attached links`}><Link2 size={13} />{task.links.length}</span>}{!!task.subtasks?.length && <span title="Checklist progress"><CheckCircle2 size={13} />{task.subtasks.filter(item => item.done).length}/{task.subtasks.length}</span>}<TaskAssignees task={task} members={members} compact /></span></div>
           {canEdit && <div className="tm-card-status-control"><select value={task.status} disabled={pending.has(task.id)} aria-label={`Move ${task.title} to status`} onChange={event => onStatusChange(task, event.target.value)}>{STATUSES.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select><ChevronDown size={12} aria-hidden="true" /></div>}
         </article>)}</div>
         {canEdit ? <button className="tm-board-add" onClick={() => onCreate({ status: status.id })}><Plus size={15} />เพิ่มงาน</button> : !grouped.length && <span className="tm-board-empty">ยังไม่มีงาน</span>}
@@ -222,7 +228,7 @@ function CalendarView({ tasks, onEdit, onCreate, canEdit }) {
   </div>;
 }
 
-export function TaskViews({ view = 'list', tasks = [], project, onEdit, onStatusChange, onCreate, canEdit = false, search = '' }) {
+export function TaskViews({ view = 'list', tasks = [], project, onEdit, onOpenComments, onStatusChange, onCreate, canEdit = false, search = '' }) {
   const [pending, setPending] = useState(new Set());
   const [error, setError] = useState('');
   async function changeStatus(task, status) {
@@ -233,7 +239,7 @@ export function TaskViews({ view = 'list', tasks = [], project, onEdit, onStatus
     catch (err) { setError(err.message || 'Could not update the task. Please try again.'); }
     finally { setPending(current => { const next = new Set(current); next.delete(task.id); return next; }); }
   }
-  const props = { tasks, project, onEdit, onCreate, canEdit, onStatusChange: changeStatus, pending };
+  const props = { tasks, project, onEdit, onOpenComments: onOpenComments || onEdit, onCreate, canEdit, onStatusChange: changeStatus, pending };
   return <div className={`tm-views tm-view-${view}`}>
     {error && <div className="tm-view-error" role="alert"><span>{error}</span><button className="tm-icon-button" aria-label="Dismiss error" onClick={() => setError('')}><X size={14} /></button></div>}
     {!tasks.length && view !== 'calendar' ? <EmptyState hasSearch={!!search} canEdit={canEdit} onCreate={onCreate} /> : view === 'board' ? <BoardView {...props} /> : view === 'calendar' ? <CalendarView {...props} /> : <ListView {...props} />}

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AlignLeft, CalendarDays, Check, CheckCircle2, CheckSquare, ChevronDown, Circle,
-  Flag, Link2, LoaderCircle, Plus, Trash2, UserRound, X,
+  Flag, Link2, ListTodo, LoaderCircle, MessageSquare, Plus, Trash2, UserRound, X,
 } from 'lucide-react';
 import MultiSelect from './MultiSelect';
+import TaskComments from './TaskComments';
 import { getTagAppearance } from '../tagAppearance';
 import './editor.css';
 
@@ -63,7 +64,7 @@ function MetadataField({ icon: Icon, label, help, wide = false, children }) {
   </div>;
 }
 
-export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit = true, initialValues, existingTasks = [], onAddTag }) {
+export function TaskEditor({ task, project, user, onSave, onDelete, onClose, canEdit = true, initialValues, existingTasks = [], onAddTag, initialTab = 'details', initialCommentId, onCommentsChange, onCommentPosted }) {
   const [draft, setDraft] = useState(() => initialDraft(task, initialValues, project));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -79,9 +80,18 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
   const dirtyRef = useRef(false);
   const [closePrompt, setClosePrompt] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState(initialTab === 'comments' ? 'comments' : 'details');
+  const [commentsCount, setCommentsCount] = useState(task?.commentsCount || 0);
+  const [commentDirty, setCommentDirty] = useState(false);
+  const [commentPending, setCommentPending] = useState(false);
+  const [pendingCloseAction, setPendingCloseAction] = useState('close');
+  const commentDirtyRef = useRef(false);
+  const tabsRef = useRef(null);
   const isExisting = Boolean(task?.id);
   const readonly = !canEdit;
-  const busy = saving || deleting || addingTag;
+  const discussionOnly = isExisting && activeTab === 'comments';
+  const busy = saving || deleting || addingTag || commentPending;
+  const hasUnsavedChanges = dirty || commentDirty;
   const members = (project?.members || []).map((member) => member.user || member).filter((member) => member?.id);
   const completed = draft.subtasks.filter((item) => item.done).length;
   const currentStatus = STATUS_OPTIONS.find((status) => status.value === draft.status) || STATUS_OPTIONS[0];
@@ -100,7 +110,8 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
 
   closeRef.current = onClose;
   busyRef.current = busy;
-  dirtyRef.current = dirty;
+  dirtyRef.current = hasUnsavedChanges;
+  commentDirtyRef.current = commentDirty;
 
   useEffect(() => {
     setDraft(initialDraft(task, initialValues, project));
@@ -109,7 +120,14 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
     setDeletePrompt(false);
     setClosePrompt(false);
     setSubtaskTitle('');
+    setCommentDirty(false);
+    setCommentPending(false);
+    setCommentsCount(task?.commentsCount || 0);
+    setPendingCloseAction('close');
   }, [task?.id, project?.id]);
+
+  useEffect(() => { setActiveTab(initialTab === 'comments' ? 'comments' : 'details'); }, [task?.id, initialTab, initialCommentId]);
+  useEffect(() => { setCommentsCount(task?.commentsCount || 0); }, [task?.commentsCount]);
 
   useEffect(() => {
     if (!error && !deletePrompt && !closePrompt) return;
@@ -122,7 +140,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const timer = window.setTimeout(() => {
-      const target = canEdit ? titleRef.current : dialogRef.current;
+      const target = canEdit && initialTab !== 'comments' ? titleRef.current : dialogRef.current;
       target?.focus();
     }, 0);
     function handleKey(event) {
@@ -130,7 +148,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
       if (event.key === 'Escape') {
         event.preventDefault();
         if (busyRef.current) return;
-        if (dirtyRef.current) { setDeletePrompt(false); setClosePrompt(true); }
+        if (dirtyRef.current) { setDeletePrompt(false); setPendingCloseAction('close'); setClosePrompt(true); }
         else closeRef.current?.();
       }
       if (event.key !== 'Tab') return;
@@ -169,7 +187,7 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
 
   function requestClose() {
     if (busy) return;
-    if (dirty) { setDeletePrompt(false); setClosePrompt(true); }
+    if (hasUnsavedChanges) { setDeletePrompt(false); setPendingCloseAction('close'); setClosePrompt(true); }
     else onClose?.();
   }
 
@@ -195,9 +213,12 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
     setSubtaskTitle('');
   }
 
-  async function saveTask(event) {
-    event.preventDefault();
+  async function saveTask(event, discardComments = false) {
+    event?.preventDefault();
     if (readonly || busy) return;
+    if (commentDirtyRef.current && !discardComments) {
+      setActiveTab('comments'); setPendingCloseAction('save'); setDeletePrompt(false); setClosePrompt(true); return;
+    }
     if (!draft.title.trim()) {
       setError('ใส่ชื่องานก่อนบันทึก');
       titleRef.current?.focus();
@@ -286,7 +307,19 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
           <label className="tm-editor-sr-only" htmlFor="tm-editor-title">Task name</label>
           <input id="tm-editor-title" ref={titleRef} className="tm-editor-title" placeholder="ตั้งชื่องาน เช่น ทำวิดีโอเปิดตัวสินค้า"
             value={draft.title} onChange={(event) => update('title', event.target.value)} maxLength={250} disabled={readonly || busy} required />
-          <p className="tm-editor-title-help">{readonly ? 'รายละเอียดและแผนเผยแพร่ของงานนี้' : 'เลือกสถานะ ผู้รับผิดชอบ และแผนเผยแพร่ได้ในหน้านี้ แล้วกดบันทึกด้านล่าง'}</p>
+          <p className="tm-editor-title-help">{activeTab === 'comments' ? readonly ? 'ความคิดเห็นและแคปชั่นที่ทีมเก็บไว้กับงานนี้' : 'เพิ่มแคปชั่น ขอแก้ไข และแท็กสมาชิกด้วย @ เพื่อแจ้งเตือนในเว็บ' : readonly ? 'รายละเอียดและแผนเผยแพร่ของงานนี้' : 'เลือกสถานะ ผู้รับผิดชอบ และแผนเผยแพร่ได้ในหน้านี้ แล้วกดบันทึกด้านล่าง'}</p>
+
+          <div className="tm-editor-tabs" ref={tabsRef} role="tablist" aria-label="ส่วนของงาน" onKeyDown={event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === 'Home' ? 'details' : event.key === 'End' ? 'comments' : activeTab === 'details' ? 'comments' : 'details';
+            setActiveTab(next); tabsRef.current?.querySelector(`[data-editor-tab="${next}"]`)?.focus();
+          }}>
+            <button type="button" role="tab" aria-label="รายละเอียดงาน" aria-selected={activeTab === 'details'} aria-controls="tm-task-details-panel" id="tm-task-details-tab" data-editor-tab="details" tabIndex={activeTab === 'details' ? 0 : -1} onClick={() => setActiveTab('details')} disabled={busy}><ListTodo size={17} />รายละเอียดงาน</button>
+            <button type="button" role="tab" aria-label="ความคิดเห็น" aria-selected={activeTab === 'comments'} aria-controls="tm-task-comments-panel" id="tm-task-comments-tab" data-editor-tab="comments" tabIndex={activeTab === 'comments' ? 0 : -1} onClick={() => setActiveTab('comments')} disabled={busy}><MessageSquare size={17} />ความคิดเห็น<span>{commentsCount}</span>{commentDirty && <span className="tm-editor-comment-draft-indicator" aria-label="มีข้อความที่ยังไม่ได้ส่ง" />}</button>
+          </div>
+
+          <div className="tm-editor-details" role="tabpanel" aria-label="รายละเอียดงาน" id="tm-task-details-panel" aria-labelledby="tm-task-details-tab" hidden={activeTab !== 'details'}>
 
           <div className="tm-editor-metadata">
             <MetadataField icon={Circle} label="สถานะงาน"><div className="tm-editor-select-wrap"><select aria-label="Status" value={draft.status} onChange={(event) => update('status', event.target.value)} disabled={readonly || busy}>
@@ -361,20 +394,27 @@ export function TaskEditor({ task, project, onSave, onDelete, onClose, canEdit =
             </div>)}
           </div>
 
+          </div>
+
+          <div className="tm-editor-discussion" role="tabpanel" aria-label="ความคิดเห็น" id="tm-task-comments-panel" aria-labelledby="tm-task-comments-tab" hidden={activeTab !== 'comments'}>
+            <TaskComments task={task} project={project} user={user} canWrite={!readonly} active={activeTab === 'comments'} initialCommentId={initialCommentId}
+              onCountChange={(taskId, count) => { setCommentsCount(count); onCommentsChange?.(taskId, count); }} onPosted={onCommentPosted} onDraftChange={setCommentDirty} onPendingChange={setCommentPending} />
+          </div>
+
           {error && <div className="tm-editor-error" ref={noticeRef} role="alert">{error}</div>}
-          {deletePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>ต้องการลบงานนี้หรือไม่?</strong><p>งานและรายการงานย่อยจะถูกลบถาวร</p></div>
+          {deletePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>ต้องการลบงานนี้หรือไม่?</strong><p>งาน รายการงานย่อย และความคิดเห็นของงานนี้จะถูกลบถาวร</p></div>
             <div className="tm-editor-confirm-actions"><button type="button" aria-label="Keep task" className="tm-editor-secondary-button" disabled={busy} onClick={() => setDeletePrompt(false)}>เก็บงานไว้</button>
               <button type="button" aria-label="Delete task" className="tm-editor-danger-button" disabled={busy} onClick={deleteTask}>{deleting && <LoaderCircle className="tm-editor-spin" size={15} />}ลบงาน</button></div></div>}
-          {closePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>ยังไม่ได้บันทึกการเปลี่ยนแปลง</strong><p>บันทึกก่อนออก หรือยกเลิกสิ่งที่แก้ไขในงานนี้</p></div>
+          {closePrompt && <div className="tm-editor-confirm" ref={noticeRef} role="alert"><div><strong>{commentDirty ? 'ยังมีข้อความที่ยังไม่ได้ส่ง' : 'ยังไม่ได้บันทึกการเปลี่ยนแปลง'}</strong><p>{commentDirty ? 'ส่งหรือบันทึกความคิดเห็นก่อนออก เพื่อเก็บข้อความไว้กับงานนี้' : 'บันทึกก่อนออก หรือยกเลิกสิ่งที่แก้ไขในงานนี้'}</p></div>
             <div className="tm-editor-confirm-actions"><button type="button" aria-label="Keep editing" className="tm-editor-secondary-button" onClick={() => setClosePrompt(false)}>แก้ไขต่อ</button>
-              <button type="button" aria-label="Discard changes" className="tm-editor-danger-button" onClick={onClose}>ไม่บันทึกและออก</button></div></div>}
+              <button type="button" aria-label="Discard changes" className="tm-editor-danger-button" onClick={() => { if (pendingCloseAction === 'save') { setClosePrompt(false); commentDirtyRef.current = false; saveTask(null, true); } else onClose?.(); }}>{pendingCloseAction === 'save' ? 'บันทึกงานและทิ้งร่างข้อความ' : 'ไม่บันทึกและออก'}</button></div></div>}
         </div>
 
         <footer className="tm-editor-footer">
-          <div className="tm-editor-footer-leading">{!readonly && <span className={`tm-editor-save-state ${dirty ? 'tm-editor-save-state-dirty' : ''}`} role="status">{dirty ? <span className="tm-editor-unsaved-dot" /> : <CheckCircle2 size={16} />}{saving ? 'กำลังบันทึก…' : dirty ? 'มีการแก้ไขที่ยังไม่บันทึก' : isExisting ? 'ข้อมูลปัจจุบัน' : 'พร้อมสร้างงานใหม่'}</span>}
+          <div className="tm-editor-footer-leading">{!readonly && <span className={`tm-editor-save-state ${hasUnsavedChanges ? 'tm-editor-save-state-dirty' : ''}`} role="status">{hasUnsavedChanges ? <span className="tm-editor-unsaved-dot" /> : <CheckCircle2 size={16} />}{saving ? 'กำลังบันทึก…' : commentDirty ? 'มีข้อความที่ยังไม่ได้ส่ง' : dirty ? 'มีการแก้ไขที่ยังไม่บันทึก' : isExisting ? 'ข้อมูลปัจจุบัน' : 'พร้อมสร้างงานใหม่'}</span>}
             {isExisting && !readonly && onDelete && <button type="button" aria-label="Delete task" className="tm-editor-delete-button" onClick={() => { setDeletePrompt(true); setClosePrompt(false); }} disabled={busy}><Trash2 size={16} /><span>ลบงาน</span></button>}</div>
-          <div className="tm-editor-footer-actions"><button type="button" aria-label={readonly ? 'Close' : 'Cancel'} className="tm-editor-secondary-button" onClick={requestClose} disabled={busy}>{readonly ? 'ปิด' : 'ยกเลิก'}</button>
-            {!readonly && <button className="tm-editor-primary-button" aria-label={saving ? 'Saving…' : isExisting ? 'Save changes' : 'Create task'} type="submit" disabled={busy}>{saving ? <LoaderCircle className="tm-editor-spin" size={17} /> : <Check size={17} />}{saving ? 'กำลังบันทึก…' : isExisting ? 'บันทึกการเปลี่ยนแปลง' : 'สร้างงาน'}</button>}</div>
+          <div className="tm-editor-footer-actions"><button type="button" aria-label={readonly || discussionOnly ? 'Close' : 'Cancel'} className="tm-editor-secondary-button" onClick={requestClose} disabled={busy}>{readonly || discussionOnly ? 'ปิด' : 'ยกเลิก'}</button>
+            {!readonly && (!discussionOnly || dirty) && <button className="tm-editor-primary-button" aria-label={saving ? 'Saving…' : isExisting ? 'Save changes' : 'Create task'} type="submit" disabled={busy}>{saving ? <LoaderCircle className="tm-editor-spin" size={17} /> : <Check size={17} />}{saving ? 'กำลังบันทึก…' : isExisting ? discussionOnly ? 'บันทึกรายละเอียดงาน' : 'บันทึกการเปลี่ยนแปลง' : 'สร้างงาน'}</button>}</div>
         </footer>
       </form>
     </section>

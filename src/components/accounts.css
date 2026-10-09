@@ -129,6 +129,7 @@
 .room-notification.is-unread { background:#f7fbf7; }
 .room-notification-icon { width:30px; height:30px; border-radius:8px; background:#eaf4eb; color:#7a9c75; display:grid; place-items:center; flex-shrink:0; }
 .room-notification-content { flex:1; min-width:0; padding-right:9px; }
+.room-notification-type { display:block; margin-top:3px; color:var(--accent); font-size:11px; font-weight:600; }
 .room-notification-content>b { font-size:11px; font-weight:600; line-height:1.85; overflow-wrap:anywhere; display:block; }
 .room-notification-content>p { margin:5px 0 8px; font-size:10px; color:#8a9984; line-height:1.85; overflow-wrap:anywhere; }
 .room-notification-content>time { color:#a0aaa0; font-size:9px; }

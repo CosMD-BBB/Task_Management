@@ -41,4 +41,12 @@
 @media(prefers-reduced-motion:reduce){.tm-editor-overlay,.tm-editor-dialog,.tm-editor-spin{animation:none}.tm-editor-progress-track>div{transition:none}}
 .tm-editor-dialog .tm-editor-section-title,.tm-editor-dialog .tm-editor-checkbox{flex-direction:row}
 .tm-editor-dialog .tm-editor-checkbox>input{padding:0;border:0;background:transparent}
+.tm-editor-tabs{display:flex;align-items:center;gap:20px;border-bottom:1px solid var(--border);margin:0 0 24px;min-height:46px}
+.tm-editor-tabs>button{position:relative;display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;font-weight:600;padding:11px 1px 14px;cursor:pointer;white-space:nowrap}
+.tm-editor-tabs>button[aria-selected="true"]{color:var(--accent)}.tm-editor-tabs>button[aria-selected="true"]::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--accent);border-radius:3px 3px 0 0}
+.tm-editor-tabs>button>span:not(.tm-editor-comment-draft-indicator){min-width:23px;text-align:center;padding:2px 5px;border-radius:6px;background:var(--surface-3);color:var(--muted);font-size:11px;line-height:1.5;font-variant-numeric:tabular-nums}
+.tm-editor-tabs>button[aria-selected="true"]>span:not(.tm-editor-comment-draft-indicator){color:var(--accent);background:var(--accent-soft)}
+.tm-editor-tabs>button>.tm-editor-comment-draft-indicator{width:7px;height:7px;border-radius:50%;background:var(--warning);padding:0}.tm-editor-tabs>button:disabled{opacity:.6;cursor:default}
+.tm-editor-details[hidden],.tm-editor-discussion[hidden]{display:none!important}
+@media(max-width:650px){.tm-editor-tabs{gap:19px;margin-bottom:20px}.tm-editor-tabs>button{font-size:13px;gap:7px}}
 @media(max-width:650px){.tm-editor-footer{flex-wrap:wrap;gap:6px;padding:10px 16px 13px}.tm-editor-footer-leading{flex:0 0 100%;justify-content:space-between;min-height:20px}.tm-editor-footer-leading:empty{display:none}.tm-editor-save-state{display:inline-flex;font-size:11px}.tm-editor-delete-button{padding:2px 4px;font-size:11px}.tm-editor-delete-button>span{display:inline}.tm-editor-footer-actions{width:100%;justify-content:flex-end}.tm-editor-primary-button{flex:1}.tm-editor-footer-actions>.tm-editor-secondary-button{min-width:85px}}

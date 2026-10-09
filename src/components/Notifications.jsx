@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowUpRight, Bell, CheckCheck, Inbox, Loader2, X } from 'lucide-react';
+import { ArrowUpRight, AtSign, Bell, CheckCheck, Inbox, Loader2, X } from 'lucide-react';
 import './accounts.css';
 
 export function NotificationPanel({ notifications = [], onRead, onReadAll, onOpenTask, onClose }) {
@@ -12,7 +12,7 @@ export function NotificationPanel({ notifications = [], onRead, onReadAll, onOpe
     <div className="room-notification-toolbar"><span>{unread ? `ยังไม่ได้อ่าน ${unread} รายการ` : 'อ่านครบแล้ว'}</span><button disabled={!unread || busy} onClick={() => run(onReadAll)}>{busy ? <Loader2 size={14} className="spin" /> : <CheckCheck size={14} />}อ่านทั้งหมด</button></div>
     {error && <div className="form-error" role="alert">{error}</div>}
     <div className="room-notification-list">{notifications.length ? notifications.map(notification => <article key={notification.id} className={`room-notification ${notification.readAt ? 'is-read' : 'is-unread'}`}>
-      <span className="room-notification-icon"><Bell size={16} /></span><div className="room-notification-content"><b>{notification.title}</b><p>{notification.body}</p><time dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' })}</time><div className="room-notification-actions">{notification.taskId && <button disabled={busy} onClick={() => run(async () => { if (!notification.readAt) await onRead(notification); await onOpenTask(notification); })}>เปิดงาน<ArrowUpRight size={14} /></button>}{!notification.readAt && <button disabled={busy} onClick={() => run(() => onRead(notification))}><CheckCheck size={14} />อ่านแล้ว</button>}</div></div>{!notification.readAt && <span className="room-notification-unread-dot" aria-label="ยังไม่ได้อ่าน" />}
-    </article>) : <div className="room-notification-empty"><Inbox size={30} /><b>ยังไม่มีการแจ้งเตือน</b><p>เมื่อมีคนมอบหมายงานให้คุณ<br />การแจ้งเตือนจะปรากฏที่นี่</p></div>}</div>
+      <span className="room-notification-icon">{notification.type === 'mention' ? <AtSign size={16} /> : <Bell size={16} />}</span><div className="room-notification-content"><b>{notification.title}</b><small className="room-notification-type">{notification.type === 'mention' ? 'มีคนแท็กคุณในความคิดเห็น' : 'มอบหมายงาน'}</small><p>{notification.body}</p><time dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' })}</time><div className="room-notification-actions">{notification.taskId && <button disabled={busy} onClick={() => run(async () => { if (!notification.readAt) await onRead(notification); await onOpenTask(notification); })}>{notification.type === 'mention' ? 'ดูความคิดเห็น' : 'เปิดงาน'}<ArrowUpRight size={14} /></button>}{!notification.readAt && <button disabled={busy} onClick={() => run(() => onRead(notification))}><CheckCheck size={14} />อ่านแล้ว</button>}</div></div>{!notification.readAt && <span className="room-notification-unread-dot" aria-label="ยังไม่ได้อ่าน" />}
+    </article>) : <div className="room-notification-empty"><Inbox size={30} /><b>ยังไม่มีการแจ้งเตือน</b><p>เมื่อมีคนมอบหมายงานหรือแท็กคุณ<br />การแจ้งเตือนจะปรากฏที่นี่</p></div>}</div>
   </aside>;
 }

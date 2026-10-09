@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { openDatabase } from './database.js';
 import { seedDemo } from './seed.js';
 import { installAccountRoutes } from './accounts.js';
+import { installCommentRoutes } from './comments.js';
 import { normalizeTaskInput, normalizeStoredTask, uniqueTags, sameScope } from './domain.js';
 import {
   projectSchema, projectPatchSchema, projectTagSchema, memberSchema, taskSchema, taskPatchSchema,
@@ -92,9 +93,9 @@ export async function createApp(options = {}) {
     ]);
     res.cookie(COOKIE, token, cookieOptions(req));
   }
-  async function projectAccess(projectId, userId) {
-    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
-    const row = await db.get(
+  async function projectAccess(projectId, userId, queryDb = db) {
+    const user = await queryDb.get('SELECT * FROM users WHERE id = ?', [userId]);
+    const row = await queryDb.get(
       `SELECT p.*, m.role AS member_role, o.demo_scope_id AS owner_demo_scope_id FROM projects p
        JOIN users o ON o.id = p.owner_id
        LEFT JOIN project_members m ON m.project_id = p.id AND m.user_id = ?
@@ -184,6 +185,7 @@ export async function createApp(options = {}) {
   const serializeNotification = (row) => ({
     id: row.id, userId: row.user_id, actorId: row.actor_id, projectId: row.project_id, taskId: row.task_id,
     type: row.type, title: row.title, body: row.body, createdAt: row.created_at, readAt: row.read_at,
+    commentId: row.comment_id ?? null,
   });
   async function accessibleNotifications(user) {
     const rows = await db.all('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC', [user.id]);
@@ -209,6 +211,7 @@ export async function createApp(options = {}) {
     if (!req.user.emailVerified) return next(new HttpError(403, 'Verify your email before using the workspace.', 'EMAIL_NOT_VERIFIED'));
     next();
   });
+  installCommentRoutes(app, { db, projectAccess, safeUser, authenticated, HttpError, requireEditor });
 
   app.get('/api/projects', authenticated, async (req, res) => {
     const rows = await db.all(
@@ -317,8 +320,9 @@ export async function createApp(options = {}) {
   });
   app.get('/api/projects/:id/tasks', authenticated, async (req, res) => {
     const project = await projectAccess(req.params.id, req.user.id);
-    const rows = await db.all('SELECT data_json FROM tasks WHERE project_id = ? ORDER BY created_at, id', [project.id]);
-    res.json({ tasks: rows.map((row) => normalizeStoredTask(JSON.parse(row.data_json))) });
+    const rows = await db.all(`SELECT t.data_json, (SELECT COUNT(*) FROM task_comments c WHERE c.task_id = t.id) AS comments_count
+      FROM tasks t WHERE t.project_id = ? ORDER BY t.created_at, t.id`, [project.id]);
+    res.json({ tasks: rows.map((row) => ({ ...normalizeStoredTask(JSON.parse(row.data_json)), commentsCount: Number(row.comments_count) })) });
   });
   app.post('/api/projects/:id/tasks', authenticated, async (req, res) => {
     const project = await projectAccess(req.params.id, req.user.id);
@@ -334,7 +338,7 @@ export async function createApp(options = {}) {
       ]);
       await notifyAssignments(task, [], req.user, project, tx);
     });
-    res.status(201).json({ task });
+    res.status(201).json({ task: { ...task, commentsCount: 0 } });
   });
   app.patch('/api/tasks/:id', authenticated, async (req, res) => {
     const row = await db.get('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
@@ -354,7 +358,8 @@ export async function createApp(options = {}) {
       await writeTask(task, tx);
       await notifyAssignments(task, currentTask.assigneeIds, req.user, project, tx);
     });
-    res.json({ task });
+    const count = await db.get('SELECT COUNT(*) AS count FROM task_comments WHERE task_id = ?', [task.id]);
+    res.json({ task: { ...task, commentsCount: Number(count.count) } });
   });
   app.delete('/api/tasks/:id', authenticated, async (req, res) => {
     const row = await db.get('SELECT * FROM tasks WHERE id = ?', [req.params.id]);

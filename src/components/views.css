@@ -48,10 +48,12 @@ html[data-theme='dark'] .tm-views { --status-color-weight: 55%; }
 .tm-views select option { background: var(--surface); color: var(--text); }
 .tm-inline-status > svg { pointer-events: none; position: absolute; right: 6px; }
 .tm-inline-status:hover:has(select:not(:disabled)) { border-color: currentColor; }
-.tm-task-title { text-align: left; color: var(--text); font-size: 13px; font-weight: 500; background: transparent; padding: 3px 0; border: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-task-title { flex: 1; min-width: 0; text-align: left; color: var(--text); font-size: 13px; font-weight: 500; background: transparent; padding: 3px 0; border: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tm-task-title:hover { color: var(--accent); }
-.tm-description-indicator { flex: 0 0 auto; color: var(--faint); }
 .tm-subtask-progress { display: inline-flex; gap: 3px; align-items: center; color: var(--muted); font-size: 10px; }
+.tm-comment-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 5px; min-width: 39px; min-height: 28px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 11px !important; font-variant-numeric: tabular-nums; }
+.tm-comment-button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.tm-task-name-cell > .tm-comment-button { margin-left: auto; }
 .tm-complete-row .tm-task-title { color: var(--muted); text-decoration: line-through; }
 .tm-priority { color: color-mix(in srgb, var(--priority-color) 55%, var(--text)); display: inline-flex; align-items: center; gap: 6px; font-size: 11px; white-space: nowrap; }
 .tm-priority-compact { gap: 0; }
@@ -204,7 +206,8 @@ html[data-theme='dark'] .tm-views { --status-color-weight: 55%; }
   .tm-task-name-cell { max-width: none; align-items: flex-start; gap: 8px; }
   .tm-task-status-marker { margin-top: 5px; }
   .tm-task-title { white-space: normal; font-size: 14px !important; line-height: 1.7; padding: 0; overflow-wrap: anywhere; }
-  .tm-description-indicator, .tm-subtask-progress { margin-top: 6px; }
+  .tm-subtask-progress { margin-top: 6px; }
+  .tm-task-name-cell > .tm-comment-button { min-height: 32px; }
   .tm-inline-status { width: 132px; height: 32px; }
   .tm-tag-editor { padding: 0; min-height: 30px; }
   .tm-task-tags { max-width: 100%; }

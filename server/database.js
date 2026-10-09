@@ -49,12 +49,27 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id);
+CREATE TABLE IF NOT EXISTS task_comments (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  author_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  author_name TEXT NOT NULL,
+  author_avatar_color TEXT NOT NULL,
+  body TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('comment', 'caption', 'revision')),
+  mentions_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS task_comments_task ON task_comments(task_id, created_at);
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  comment_id TEXT REFERENCES task_comments(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT NOT NULL,
@@ -97,7 +112,9 @@ const additiveColumns = {
     cover_image: 'TEXT', content_type_options_json: "TEXT NOT NULL DEFAULT '[]'", channel_options_json: "TEXT NOT NULL DEFAULT '[]'",
   },
   account_tokens: { issued_mode: "TEXT NOT NULL DEFAULT ''" },
+  notifications: { comment_id: 'TEXT REFERENCES task_comments(id) ON DELETE CASCADE' },
 };
+const commentNotificationIndex = 'CREATE UNIQUE INDEX IF NOT EXISTS notifications_comment_user ON notifications(comment_id, user_id) WHERE comment_id IS NOT NULL';
 
 /** One query interface keeps local SQLite and deployed PostgreSQL behavior alike. */
 export async function openDatabase({ databasePath, databaseUrl } = {}) {
@@ -120,6 +137,7 @@ export async function openDatabase({ databasePath, databaseUrl } = {}) {
           await migrationClient.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
         }
       }
+      await migrationClient.query(commentNotificationIndex);
     } catch (error) {
       // Discard this client so a failed initialization cannot retain a session lock.
       migrationClient.release(true);
@@ -174,6 +192,7 @@ export async function openDatabase({ databasePath, databaseUrl } = {}) {
       if (!existing.has(column)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
   }
+  sqlite.exec(commentNotificationIndex);
   let pending = Promise.resolve();
   const schedule = (callback) => {
     const result = pending.then(callback);
