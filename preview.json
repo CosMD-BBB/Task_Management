@@ -1,9 +1,9 @@
 {
-  "status": "offline",
-  "url": "https://reseller-reply-phoenix-text.trycloudflare.com",
-  "sourceCommit": "cf09390097e896263bf68cc1db6bf6fde2ceb922",
-  "startedAt": "2026-10-09T06:27:23.589Z",
-  "expiresAt": "2026-10-09T06:57:23.589Z",
-  "updatedAt": "2026-10-09T06:35:40.039Z",
+  "status": "online",
+  "url": "https://pregnant-clouds-occupied-betting.trycloudflare.com",
+  "sourceCommit": "1683f029ded87330b83d83b2ef1aa30236b13ea6",
+  "startedAt": "2026-10-09T06:36:28.227Z",
+  "expiresAt": "2026-10-09T07:06:28.227Z",
+  "updatedAt": "2026-10-09T06:36:28.227Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
