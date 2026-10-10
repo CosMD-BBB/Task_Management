@@ -64,17 +64,23 @@ function MetadataField({ icon: Icon, label, help, wide = false, children }) {
   </div>;
 }
 
-export function TaskEditor({ task, project, user, onSave, onDelete, onClose, canEdit = true, initialValues, existingTasks = [], onAddTag, initialTab = 'details', initialCommentId, onCommentsChange, onCommentPosted }) {
+export function TaskEditor({ task, project, user, onSave, onDelete, onClose, canEdit = true, initialValues, existingTasks = [], onAddTag, initialTab = 'details', initialCommentId, initialSection, onReloadLatest, onCommentsChange, onCommentPosted }) {
   const [draft, setDraft] = useState(() => initialDraft(task, initialValues, project));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState(false);
   const [error, setError] = useState('');
+  const [conflictTask, setConflictTask] = useState(null);
+  const [reloadPrompt, setReloadPrompt] = useState(false);
+  const [copyNotice, setCopyNotice] = useState('');
   const [subtaskTitle, setSubtaskTitle] = useState('');
   const dialogRef = useRef(null);
   const titleRef = useRef(null);
+  const briefRef = useRef(null);
   const noticeRef = useRef(null);
+  const conflictRef = useRef(null);
+  const reloadRef = useRef(null);
   const closeRef = useRef(onClose);
   const busyRef = useRef(false);
   const dirtyRef = useRef(false);
@@ -93,6 +99,10 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
   const busy = saving || deleting || addingTag || commentPending;
   const hasUnsavedChanges = dirty || commentDirty;
   const members = (project?.members || []).map((member) => member.user || member).filter((member) => member?.id);
+  const assigneeOptions = members.map(member => {
+    const disabledReason = member.disabled ? 'ระงับบัญชี' : member.emailVerified === false ? 'รอยืนยันอีเมล' : '';
+    return { value: member.id, label: member.name, description: [member.email, disabledReason].filter(Boolean).join(' · '), color: member.avatarColor, disabled: Boolean(disabledReason), disabledReason };
+  });
   const completed = draft.subtasks.filter((item) => item.done).length;
   const currentStatus = STATUS_OPTIONS.find((status) => status.value === draft.status) || STATUS_OPTIONS[0];
   const contentCatalog = uniqueValues([
@@ -116,6 +126,9 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
   useEffect(() => {
     setDraft(initialDraft(task, initialValues, project));
     setError('');
+    setConflictTask(null);
+    setReloadPrompt(false);
+    setCopyNotice('');
     setDirty(false);
     setDeletePrompt(false);
     setClosePrompt(false);
@@ -130,6 +143,29 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
   useEffect(() => { setCommentsCount(task?.commentsCount || 0); }, [task?.commentsCount]);
 
   useEffect(() => {
+    if (!['contentType', 'channel'].includes(initialSection)) return;
+    setActiveTab('details');
+    const timer = window.setTimeout(() => {
+      const section = dialogRef.current?.querySelector(initialSection === 'channel' ? '.tm-multi-channel' : '.tm-multi-type');
+      section?.scrollIntoView({ block: 'start' });
+      section?.querySelector('input[aria-label^="Search "]')?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [task?.id, initialSection]);
+
+  useEffect(() => {
+    if (!conflictTask) return;
+    conflictRef.current?.scrollIntoView({ block: 'nearest' });
+    conflictRef.current?.focus({ preventScroll: true });
+  }, [conflictTask]);
+
+  useEffect(() => {
+    if (!reloadPrompt) return;
+    reloadRef.current?.scrollIntoView({ block: 'nearest' });
+    reloadRef.current?.querySelector('button')?.focus({ preventScroll: true });
+  }, [reloadPrompt]);
+
+  useEffect(() => {
     if (!error && !deletePrompt && !closePrompt) return;
     noticeRef.current?.scrollIntoView({ block: 'nearest' });
     if (deletePrompt || closePrompt) noticeRef.current?.querySelector('button')?.focus();
@@ -140,6 +176,7 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const timer = window.setTimeout(() => {
+      if (['contentType', 'channel'].includes(initialSection)) return;
       const target = canEdit && initialTab !== 'comments' ? titleRef.current : dialogRef.current;
       target?.focus();
     }, 0);
@@ -187,8 +224,26 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
 
   function requestClose() {
     if (busy) return;
+    setReloadPrompt(false);
     if (hasUnsavedChanges) { setDeletePrompt(false); setPendingCloseAction('close'); setClosePrompt(true); }
     else onClose?.();
+  }
+
+  async function copyBrief() {
+    if (busy) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(draft.description);
+      setCopyNotice('คัดลอกบรีฟแล้ว วางเก็บไว้ก่อนโหลดข้อมูลล่าสุดได้');
+    } catch {
+      setActiveTab('details');
+      setCopyNotice('เลือกข้อความบรีฟไว้แล้ว กดคัดลอกเพื่อเก็บไว้ก่อนโหลดข้อมูลล่าสุด');
+      window.setTimeout(() => {
+        briefRef.current?.scrollIntoView({ block: 'center' });
+        briefRef.current?.focus({ preventScroll: true });
+        briefRef.current?.select();
+      }, 0);
+    }
   }
 
   function updateLink(index, key, value) {
@@ -216,6 +271,11 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
   async function saveTask(event, discardComments = false) {
     event?.preventDefault();
     if (readonly || busy) return;
+    if (conflictTask) {
+      conflictRef.current?.scrollIntoView({ block: 'nearest' });
+      conflictRef.current?.focus({ preventScroll: true });
+      return;
+    }
     if (commentDirtyRef.current && !discardComments) {
       setActiveTab('comments'); setPendingCloseAction('save'); setDeletePrompt(false); setClosePrompt(true); return;
     }
@@ -263,7 +323,11 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
       dirtyRef.current = false;
       onClose?.();
     } catch (saveError) {
-      setError(saveError?.message || 'บันทึกงานไม่สำเร็จ กรุณาลองอีกครั้ง');
+      if (saveError?.code === 'TASK_CONFLICT' && saveError.currentTask?.id === task?.id) {
+        setConflictTask(saveError.currentTask);
+        setError('');
+        setCopyNotice('');
+      } else setError(saveError?.message || 'บันทึกงานไม่สำเร็จ กรุณาลองอีกครั้ง');
     } finally {
       setSaving(false);
     }
@@ -319,11 +383,25 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
             <button type="button" role="tab" aria-label="ความคิดเห็น" aria-selected={activeTab === 'comments'} aria-controls="tm-task-comments-panel" id="tm-task-comments-tab" data-editor-tab="comments" tabIndex={activeTab === 'comments' ? 0 : -1} onClick={() => setActiveTab('comments')} disabled={busy}><MessageSquare size={17} />ความคิดเห็น<span>{commentsCount}</span>{commentDirty && <span className="tm-editor-comment-draft-indicator" aria-label="มีข้อความที่ยังไม่ได้ส่ง" />}</button>
           </div>
 
+          {conflictTask && <div className="tm-editor-conflict" ref={conflictRef} role="alert" aria-label="งานนี้มีข้อมูลใหม่" tabIndex={-1}>
+            <div><strong>งานนี้มีข้อมูลใหม่จากสมาชิกในทีม</strong><p>สิ่งที่คุณแก้ไขยังอยู่ในหน้านี้ และยังไม่ได้บันทึกทับข้อมูลใหม่ คัดลอกบรีฟเก็บไว้ แล้วโหลดข้อมูลล่าสุดก่อนแก้ไขและบันทึกอีกครั้ง</p></div>
+            <div className="tm-editor-conflict-actions"><button type="button" className="tm-editor-secondary-button" disabled={busy || !draft.description} onClick={copyBrief}>คัดลอกบรีฟที่แก้ไว้</button>
+              <button type="button" className="tm-editor-primary-button" disabled={busy || !onReloadLatest} onClick={() => { setDeletePrompt(false); setClosePrompt(false); setReloadPrompt(true); }}>โหลดข้อมูลล่าสุด</button></div>
+            {copyNotice && <p className="tm-editor-copy-notice" role="status">{copyNotice}</p>}
+          </div>}
+          {reloadPrompt && <div className="tm-editor-confirm tm-editor-reload-confirm" ref={reloadRef} role="alertdialog" aria-label="โหลดข้อมูลล่าสุดของงาน" onKeyDown={event => {
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setReloadPrompt(false); conflictRef.current?.querySelector('button:last-of-type')?.focus(); }
+          }}>
+            <div><strong>โหลดข้อมูลล่าสุดและทิ้งร่างที่แก้ไว้หรือไม่?</strong><p>รายละเอียดงานที่ยังไม่บันทึก รวมถึงความคิดเห็นและแคปชั่นที่ยังไม่ได้ส่ง จะถูกทิ้ง ตรวจสอบว่าคัดลอกข้อความที่ต้องการเก็บไว้แล้ว</p></div>
+            <div className="tm-editor-confirm-actions"><button type="button" className="tm-editor-secondary-button" disabled={busy} onClick={() => { setReloadPrompt(false); conflictRef.current?.querySelector('button:last-of-type')?.focus(); }}>กลับไปแก้ไขต่อ</button>
+              <button type="button" className="tm-editor-danger-button" disabled={busy || !conflictTask || !onReloadLatest} onClick={() => { if (!busy && conflictTask) onReloadLatest?.(conflictTask); }}>ยืนยันโหลดข้อมูลล่าสุด</button></div>
+          </div>}
+
           <div className="tm-editor-details" role="tabpanel" aria-label="รายละเอียดงาน" id="tm-task-details-panel" aria-labelledby="tm-task-details-tab" hidden={activeTab !== 'details'}>
 
           <div className="tm-editor-section tm-editor-brief-section">
             <label className="tm-editor-section-title" htmlFor="tm-editor-description"><AlignLeft size={17} />รายละเอียดและบรีฟงาน</label>
-            <textarea id="tm-editor-description" aria-label="Description" className="tm-editor-description" placeholder="ใส่บรีฟ แนวคิด หรือรายละเอียดที่ทีมต้องรู้…" value={draft.description}
+            <textarea id="tm-editor-description" ref={briefRef} aria-label="Description" className="tm-editor-description" placeholder="ใส่บรีฟ แนวคิด หรือรายละเอียดที่ทีมต้องรู้…" value={draft.description}
               onChange={(event) => update('description', event.target.value)} rows={4} disabled={readonly || busy} maxLength={10000} />
           </div>
 
@@ -335,8 +413,8 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
               {PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select><ChevronDown size={13} /></div></MetadataField>
             <MetadataField icon={CalendarDays} label="กำหนดส่ง"><input type="date" aria-label="Due date" max="9999-12-31" value={draft.dueDate} onChange={(event) => update('dueDate', event.target.value)} disabled={readonly || busy} /></MetadataField>
-            <MetadataField icon={UserRound} label="ผู้รับผิดชอบ" help="เลือกได้หลายคน สมาชิกจะได้รับแจ้งเตือนเมื่อมอบหมายงาน" wide>
-              <MultiSelect label="Assignees" value={draft.assigneeIds} options={members.map((member) => ({ value: member.id, label: member.name, description: member.email, color: member.avatarColor }))}
+            <MetadataField icon={UserRound} label="ผู้รับผิดชอบ" help="เลือกได้หลายคน สมาชิกจะได้รับแจ้งเตือนเมื่อบันทึกงาน" wide>
+              <MultiSelect label="Assignees" value={draft.assigneeIds} options={assigneeOptions}
                 onChange={(values) => update('assigneeIds', values)} variant="assignee" placeholder="เลือกผู้รับผิดชอบ…" disabled={busy} readonly={readonly} maxSelected={50} />
             </MetadataField>
             {(project?.fields || []).map((field) => <MetadataField key={field.id} icon={AlignLeft} label={field.name}>
@@ -414,7 +492,7 @@ export function TaskEditor({ task, project, user, onSave, onDelete, onClose, can
           <div className="tm-editor-footer-leading">{!readonly && <span className={`tm-editor-save-state ${hasUnsavedChanges ? 'tm-editor-save-state-dirty' : ''}`} role="status">{hasUnsavedChanges ? <span className="tm-editor-unsaved-dot" /> : <CheckCircle2 size={16} />}{saving ? 'กำลังบันทึก…' : commentDirty ? 'มีข้อความที่ยังไม่ได้ส่ง' : dirty ? 'มีการแก้ไขที่ยังไม่บันทึก' : isExisting ? 'ข้อมูลปัจจุบัน' : 'พร้อมสร้างงานใหม่'}</span>}
             {isExisting && !readonly && onDelete && <button type="button" aria-label="Delete task" className="tm-editor-delete-button" onClick={() => { setDeletePrompt(true); setClosePrompt(false); }} disabled={busy}><Trash2 size={16} /><span>ลบงาน</span></button>}</div>
           <div className="tm-editor-footer-actions"><button type="button" aria-label={readonly || discussionOnly ? 'Close' : 'Cancel'} className="tm-editor-secondary-button" onClick={requestClose} disabled={busy}>{readonly || discussionOnly ? 'ปิด' : 'ยกเลิก'}</button>
-            {!readonly && (!discussionOnly || dirty) && <button className="tm-editor-primary-button" aria-label={saving ? 'Saving…' : isExisting ? 'Save changes' : 'Create task'} type="submit" disabled={busy}>{saving ? <LoaderCircle className="tm-editor-spin" size={17} /> : <Check size={17} />}{saving ? 'กำลังบันทึก…' : isExisting ? discussionOnly ? 'บันทึกรายละเอียดงาน' : 'บันทึกการเปลี่ยนแปลง' : 'สร้างงาน'}</button>}</div>
+            {!readonly && (!discussionOnly || dirty) && <button className="tm-editor-primary-button" aria-label={saving ? 'Saving…' : isExisting ? 'Save changes' : 'Create task'} type="submit" disabled={busy || Boolean(conflictTask)}>{saving ? <LoaderCircle className="tm-editor-spin" size={17} /> : <Check size={17} />}{saving ? 'กำลังบันทึก…' : isExisting ? discussionOnly ? 'บันทึกรายละเอียดงาน' : 'บันทึกการเปลี่ยนแปลง' : 'สร้างงาน'}</button>}</div>
         </footer>
       </form>
     </section>

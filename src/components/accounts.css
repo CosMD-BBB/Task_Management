@@ -48,7 +48,7 @@
 .room-admin-demo svg { flex-shrink:0; }
 .room-admin-demo b { font-size:12px; font-weight:600; }
 .room-admin-demo p { font-size:10px; line-height:1.85; margin:4px 0 0; }
-.room-admin-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:21px; }
+.room-admin-stats { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:21px; }
 .room-admin-stats>div { display:grid; grid-template-columns:30px 1fr; column-gap:10px; align-items:center; border:1px solid var(--border); background:#fcfdfb; border-radius:9px; padding:14px 18px; }
 .room-admin-stats svg { color:#8b9e8c; grid-row:1/3; }
 .room-admin-stats strong { font-size:24px; font-weight:600; line-height:1.3; }
@@ -76,6 +76,7 @@
 .room-admin-status { display:inline-flex; gap:4px; align-items:center; border-radius:4px; font-size:9px; padding:3px 6px; }
 .room-admin-status.status-active { background:#eaf6ef; color:#559167; }
 .room-admin-status.status-disabled { background:#fceee7; color:#bb896c; }
+.room-admin-status.status-pending { background:var(--warning-soft); color:var(--warning); }
 .room-admin-role { display:inline-flex; align-items:center; gap:4px; font-size:9px; color:#859080; }
 .room-admin-email-status { font-size:8px; color:#9ba49a; }
 .room-admin-email-status.is-pending { color:#b99765; }

@@ -6,7 +6,12 @@ import './multi-select.css';
 const initials = (name = '') => name.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 2).join('').toUpperCase();
 
 function OptionMark({ option, variant }) {
-  if (variant === 'assignee') return <span className="tm-multi-avatar" style={{ background: option.color || '#788aa7' }}>{initials(option.label)}</span>;
+  if (variant === 'assignee') {
+    const background = /^#[0-9a-f]{6}$/i.test(option.color || '') ? option.color : '#788aa7';
+    const channels = background.slice(1).match(/../g).map(channel => parseInt(channel, 16) / 255).map(channel => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
+    const luminance = channels.reduce((sum, channel, index) => sum + channel * [.2126, .7152, .0722][index], 0);
+    return <span className="tm-multi-avatar" style={{ background, color: 1.05 / (luminance + .05) >= 4.5 ? '#FFFFFF' : '#000000' }}>{initials(option.label)}</span>;
+  }
   return <ChoiceIcon option={option} variant={variant} />;
 }
 
@@ -26,6 +31,7 @@ export default function MultiSelect({ label, title, description, display = 'popu
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [createdOptions, setCreatedOptions] = useState([]);
+  const [expandedChoices, setExpandedChoices] = useState(false);
   const containerRef = useRef(null);
   const triggerRef = useRef(null);
   const searchRef = useRef(null);
@@ -43,18 +49,20 @@ export default function MultiSelect({ label, title, description, display = 'popu
       if (option?.value && !unique.has(option.value)) unique.set(option.value, option);
     }
     for (const selected of value) {
-      if (!unique.has(selected)) unique.set(selected, { value: selected, label: variant === 'assignee' ? 'Former teammate' : selected });
+      if (!unique.has(selected)) unique.set(selected, { value: selected, label: variant === 'assignee' ? 'สมาชิกเดิม' : selected, disabled: variant === 'assignee', disabledReason: variant === 'assignee' ? 'ไม่ได้อยู่ในโปรเจกต์' : undefined });
     }
     return Array.from(unique.values());
   }, [options, createdOptions, value, variant]);
   const searchTerm = search.trim();
-  const filteredOptions = allOptions.filter((option) => `${option.label} ${option.description || ''}`.toLocaleLowerCase().includes(searchTerm.toLocaleLowerCase()));
-  const matchingOption = allOptions.find((option) => option.label.toLocaleLowerCase() === searchTerm.toLocaleLowerCase());
+  const filteredOptions = allOptions.filter(option => !option.disabled || value.includes(option.value)).filter((option) => `${option.label} ${option.description || ''}`.toLocaleLowerCase().includes(searchTerm.toLocaleLowerCase()));
+  const matchingOption = filteredOptions.find((option) => !option.disabled && option.label.toLocaleLowerCase() === searchTerm.toLocaleLowerCase());
   const creationTerm = inline ? newOption.trim() : searchTerm;
   const matchingCreation = allOptions.find((option) => option.label.toLocaleLowerCase() === creationTerm.toLocaleLowerCase());
   const atLimit = value.length >= maxSelected;
   const canCreate = Boolean(onCreate && creationTerm && !matchingCreation && !readonly && !atLimit);
   const selectedOptions = value.map((selected) => allOptions.find((option) => option.value === selected)).filter(Boolean);
+  const collapsedLimit = 12;
+  const visibleChoices = expandedChoices ? filteredOptions : filteredOptions.slice(0, collapsedLimit);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -81,13 +89,14 @@ export default function MultiSelect({ label, title, description, display = 'popu
   function toggle(option) {
     if (disabled || creating || readonly) return;
     const current = valueRef.current;
+    if (option.disabled && !current.includes(option.value)) return;
     if (!current.includes(option.value) && current.length >= maxSelected) return;
     onChange?.(current.includes(option.value) ? current.filter((item) => item !== option.value) : [...current, option.value]);
     setError('');
   }
 
   function selectExisting(option) {
-    if (disabled || creating || readonly || (atLimit && !valueRef.current.includes(option.value))) return;
+    if (disabled || creating || readonly || option.disabled || (atLimit && !valueRef.current.includes(option.value))) return;
     if (!valueRef.current.includes(option.value)) onChange?.([...valueRef.current, option.value]);
     setError('');
   }
@@ -118,10 +127,20 @@ export default function MultiSelect({ label, title, description, display = 'popu
   }
 
   function handleKey(event) {
+    if (event.nativeEvent?.isComposing || event.isComposing) return;
     if (inline) {
-      if (event.key === 'Enter' && event.target.getAttribute('aria-label') === `New ${label} option`) {
+      if (event.key !== 'Enter') return;
+      if (event.target === searchRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (matchingOption) selectExisting(matchingOption);
+        else if (filteredOptions.length === 1) selectExisting(filteredOptions[0]);
+      } else if (event.target.getAttribute('aria-label') === `New ${label} option`) {
         event.preventDefault();
         createOption();
+      } else if (event.target.type === 'checkbox') {
+        event.preventDefault();
+        event.target.click();
       }
       return;
     }
@@ -153,8 +172,9 @@ export default function MultiSelect({ label, title, description, display = 'popu
   }
 
   const selectedChips = <div className="tm-multi-selected" aria-label={`Selected ${label}`}>
-    {selectedOptions.map((option) => <span className="tm-multi-chip" key={option.value} style={optionStyle(option)} data-tag-value={variant === 'assignee' ? undefined : option.value} data-tag-kind={variant === 'assignee' ? undefined : tagKind}>
+    {selectedOptions.map((option) => <span className={`tm-multi-chip ${option.disabled ? 'tm-multi-chip-historical' : ''}`} key={option.value} style={optionStyle(option)} data-tag-value={variant === 'assignee' ? undefined : option.value} data-tag-kind={variant === 'assignee' ? undefined : tagKind}>
       <OptionMark option={option} variant={variant} /><span className="tm-multi-chip-label" title={option.label}>{option.label}</span>
+      {option.disabled && <small className="tm-multi-historical-label">{option.disabledReason || 'สมาชิกเดิม'}</small>}
       {!readonly && <button type="button" aria-label={`Remove ${option.label} from ${label}`} disabled={disabled || creating} onClick={() => toggle(option)}><X size={13} /></button>}
     </span>)}
     {!selectedOptions.length && <span className="tm-multi-placeholder">{variant === 'assignee' ? 'ยังไม่มีผู้รับผิดชอบ' : 'ยังไม่ได้เลือก — กดตัวเลือกด้านล่างได้เลย'}</span>}
@@ -162,21 +182,22 @@ export default function MultiSelect({ label, title, description, display = 'popu
 
   if (inline) return <section className={`tm-multi-select tm-multi-inline tm-multi-${variant} ${readonly ? 'tm-multi-readonly' : ''}`} ref={containerRef} onKeyDown={handleKey}
     role="group" aria-label={`${label} options`}>
-    <div className="tm-multi-inline-heading"><div><span className="tm-multi-eyebrow">{label}</span><h3>{title || label}</h3><p>{description}</p></div><span className="tm-multi-count" aria-live="polite">เลือก {value.length}</span></div>
+    <div className="tm-multi-inline-heading"><div><span className="tm-multi-eyebrow">{label}</span><h3>{title || label}</h3><p>{description}</p></div><span className="tm-multi-count" aria-live="polite">เลือกแล้ว {value.length} รายการ</span></div>
     <div className="tm-multi-inline-summary">{selectedChips}</div>
     <div className="tm-multi-choices-caption"><span>เลือกได้หลายรายการ</span>{!readonly && <button type="button" aria-label={`Clear ${label}`} disabled={!value.length || disabled || creating} onClick={() => onChange?.([])}>ล้างที่เลือก</button>}</div>
     <label className="tm-multi-search tm-multi-inline-search"><Search size={16} /><input ref={searchRef} aria-label={`Search ${label}`} placeholder="ค้นหาตัวเลือก…"
-      value={search} maxLength={100} disabled={creating || disabled} onChange={(event) => setSearch(event.target.value)} />
+      value={search} maxLength={100} disabled={creating || disabled} onChange={(event) => { setSearch(event.target.value); setExpandedChoices(false); }} />
       {search && !creating && <button type="button" aria-label={`Clear search ${label}`} onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={14} /></button>}
     </label>
     <div className="tm-multi-inline-options">
-      {filteredOptions.map((option) => <label className={`tm-multi-choice ${value.includes(option.value) ? 'tm-multi-choice-selected' : ''}`} key={option.value} style={optionStyle(option)} data-tag-value={option.value} data-tag-kind={tagKind}>
-        <input type="checkbox" aria-label={option.label} checked={value.includes(option.value)} disabled={readonly || disabled || creating || (atLimit && !value.includes(option.value))} onChange={() => toggle(option)} />
+      {visibleChoices.map((option) => <label className={`tm-multi-choice ${value.includes(option.value) ? 'tm-multi-choice-selected' : ''}`} key={option.value} style={optionStyle(option)} data-tag-value={option.value} data-tag-kind={tagKind}>
+        <input type="checkbox" aria-label={option.label} checked={value.includes(option.value)} disabled={readonly || disabled || creating || (option.disabled && !value.includes(option.value)) || (atLimit && !value.includes(option.value))} onChange={() => toggle(option)} />
         <ChoiceIcon option={option} variant={variant} /><span className="tm-multi-choice-text"><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
         <span className="tm-multi-checkbox"><Check size={13} strokeWidth={3} /></span>
       </label>)}
       {!filteredOptions.length && <p className="tm-multi-no-results">ไม่พบตัวเลือก ลองค้นหาด้วยคำอื่น หรือเพิ่มตัวเลือกใหม่ด้านล่าง</p>}
     </div>
+    {filteredOptions.length > collapsedLimit && <button type="button" className="tm-multi-show-more" aria-label={`${expandedChoices ? 'Collapse' : 'Show all'} ${label} options`} aria-expanded={expandedChoices} onClick={() => setExpandedChoices(current => !current)}>{expandedChoices ? 'แสดงตัวเลือกน้อยลง' : `แสดงเพิ่มอีก ${filteredOptions.length - collapsedLimit} รายการ`}<ChevronDown size={15} /></button>}
     {onCreate && !readonly && <div className="tm-multi-custom-option"><label htmlFor={`${id}-new`}>เพิ่มตัวเลือกของทีม</label><div>
       <input id={`${id}-new`} aria-label={`New ${label} option`} placeholder={variant === 'channel' ? 'เช่น Shopee Live, งานอีเวนต์' : 'เช่น รีวิวสินค้า, ขายของ'} value={newOption} maxLength={100} disabled={creating || disabled || atLimit} onChange={(event) => { setNewOption(event.target.value); setError(''); }} />
       <button type="button" aria-label={`Add ${label} option`} className="tm-multi-create" disabled={!canCreate || creating || disabled} onClick={createOption}>{creating ? <LoaderCircle size={16} className="tm-multi-spin" /> : <Plus size={16} />}<span>{creating ? 'กำลังเพิ่ม' : 'เพิ่ม'}</span></button>
@@ -192,7 +213,7 @@ export default function MultiSelect({ label, title, description, display = 'popu
       {!readonly && <button type="button" className={`tm-multi-trigger ${!selectedOptions.length ? 'tm-multi-trigger-empty' : ''}`} ref={triggerRef}
         aria-label={label} aria-expanded={open} aria-controls={`${id}-options`} disabled={disabled || creating}
         onClick={() => { if (open) close(); else { setSearch(''); setError(''); setOpen(true); } }}>
-        {!selectedOptions.length ? <span>{placeholder}</span> : <Plus size={13} />}<ChevronDown size={13} />
+        {!selectedOptions.length ? <span>{placeholder}</span> : <><Plus size={13} /><span>{variant === 'assignee' ? 'เพิ่มคน' : 'เลือกเพิ่ม'}</span></>}<ChevronDown size={13} />
       </button>}
     </div>
     {open && <div className="tm-multi-popup" id={`${id}-options`} ref={popupRef} role="group" aria-label={`${label} options`}>
@@ -203,7 +224,7 @@ export default function MultiSelect({ label, title, description, display = 'popu
       </label>
       <div className="tm-multi-options">
         {filteredOptions.map((option) => <label className={`tm-multi-option ${value.includes(option.value) ? 'tm-multi-option-selected' : ''}`} key={option.value} style={optionStyle(option)}>
-          <input type="checkbox" aria-label={option.label} checked={value.includes(option.value)} disabled={disabled || creating || (atLimit && !value.includes(option.value))} onChange={() => toggle(option)} />
+          <input type="checkbox" aria-label={option.label} checked={value.includes(option.value)} disabled={disabled || creating || (option.disabled && !value.includes(option.value)) || (atLimit && !value.includes(option.value))} onChange={() => toggle(option)} />
           <span className="tm-multi-checkbox"><Check size={11} strokeWidth={3} /></span><OptionMark option={option} variant={variant} />
           <span className="tm-multi-option-text"><span>{option.label}</span>{option.description && <small>{option.description}</small>}</span>
         </label>)}

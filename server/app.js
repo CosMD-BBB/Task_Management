@@ -8,7 +8,7 @@ import { openDatabase } from './database.js';
 import { seedDemo } from './seed.js';
 import { installAccountRoutes } from './accounts.js';
 import { installCommentRoutes } from './comments.js';
-import { normalizeTaskInput, normalizeStoredTask, uniqueTags, sameScope } from './domain.js';
+import { normalizeTaskInput, normalizeStoredTask, uniqueTags, sameScope, nextUpdatedAt } from './domain.js';
 import {
   projectSchema, projectPatchSchema, projectTagSchema, memberSchema, taskSchema, taskPatchSchema,
 } from './validation.js';
@@ -25,6 +25,12 @@ const forbidden = () => new HttpError(403, 'You do not have permission to make t
 
 export async function createApp(options = {}) {
   const db = await openDatabase(options);
+  const transaction = db.transaction;
+  db.transaction = (operation) => transaction(async (tx) => {
+    // Match SQLite's serialized writes across PostgreSQL instances, including account changes.
+    if (tx.kind === 'postgres') await tx.get('SELECT pg_advisory_xact_lock(814721901)');
+    return operation(tx);
+  });
   const mailMode = (options.mailMode ?? process.env.MAIL_MODE) === 'preview' ? 'preview' : 'resend';
   const safeUser = (row) => ({
     id: row.id, name: row.name, email: row.email, avatarColor: row.avatar_color,
@@ -83,15 +89,28 @@ export async function createApp(options = {}) {
     httpOnly: true, sameSite: 'lax', secure: Boolean(process.env.VERCEL || req.secure),
     path: '/', maxAge: SESSION_DURATION,
   });
-  async function signIn(req, res, user) {
-    const priorToken = req.cookies[COOKIE];
-    if (typeof priorToken === 'string') await db.run('DELETE FROM sessions WHERE token_hash = ?', [hashToken(priorToken)]);
+  async function signIn(req, res, user, { queryDb, expectedPasswordHash } = {}) {
     const token = randomBytes(32).toString('hex');
-    await db.run('DELETE FROM sessions WHERE expires_at <= ?', [new Date().toISOString()]);
-    await db.run('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', [
-      hashToken(token), user.id, new Date(Date.now() + SESSION_DURATION).toISOString(),
-    ]);
+    const persist = async (tx) => {
+      const current = await tx.get('SELECT * FROM users WHERE id = ?', [user.id]);
+      if (!current || current.disabled_at || expectedPasswordHash && current.password_hash !== expectedPasswordHash) {
+        throw new HttpError(401, 'Email or password is incorrect, or this account is suspended.', 'INVALID_CREDENTIALS');
+      }
+      const priorToken = req.cookies[COOKIE];
+      if (typeof priorToken === 'string') await tx.run('DELETE FROM sessions WHERE token_hash = ?', [hashToken(priorToken)]);
+      await tx.run('DELETE FROM sessions WHERE expires_at <= ?', [new Date().toISOString()]);
+      await tx.run('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', [
+        hashToken(token), current.id, new Date(Date.now() + SESSION_DURATION).toISOString(),
+      ]);
+      return current;
+    };
+    const current = queryDb ? await persist(queryDb) : await db.transaction(persist);
     res.cookie(COOKIE, token, cookieOptions(req));
+    return current;
+  }
+  async function lockProject(projectId, tx) {
+    const project = await tx.get(`SELECT id FROM projects WHERE id = ?${tx.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [projectId]);
+    if (!project) throw missing();
   }
   async function projectAccess(projectId, userId, queryDb = db) {
     const user = await queryDb.get('SELECT * FROM users WHERE id = ?', [userId]);
@@ -130,13 +149,15 @@ export async function createApp(options = {}) {
   }
   const requireEditor = (project) => { if (!['owner', 'editor'].includes(project.yourRole)) throw forbidden(); };
   const requireOwner = (project) => { if (project.yourRole !== 'owner') throw forbidden(); };
-  async function validateTaskForProject(task, project) {
+  async function validateTaskForProject(task, project, queryDb = db, previousAssigneeIds = []) {
     for (const assigneeId of task.assigneeIds) {
-      const assignee = await db.get('SELECT * FROM users WHERE id = ? AND disabled_at IS NULL AND email_verified = 1', [assigneeId]);
-      const member = assigneeId === project.owner_id || await db.get(
+      const assignee = await queryDb.get('SELECT * FROM users WHERE id = ?', [assigneeId]);
+      const member = assigneeId === project.owner_id || await queryDb.get(
         'SELECT user_id FROM project_members WHERE project_id = ? AND user_id = ?', [project.id, assigneeId],
       );
-      if (!member || !assignee || !safeUser(assignee).emailVerified || !sameScope(assignee, { demo_scope_id: project.owner_demo_scope_id })) {
+      const historical = previousAssigneeIds.includes(assigneeId);
+      if (!member || !assignee || !sameScope(assignee, { demo_scope_id: project.owner_demo_scope_id })
+        || !historical && (assignee.disabled_at || !safeUser(assignee).emailVerified)) {
         throw new HttpError(400, 'The assignee must be an active, verified member of this project.', 'INVALID_ASSIGNEE');
       }
     }
@@ -229,94 +250,114 @@ export async function createApp(options = {}) {
   app.post('/api/projects', authenticated, async (req, res) => {
     const input = projectSchema.parse(req.body);
     const projectId = randomUUID();
-    await db.run(`INSERT INTO projects (id, name, description, color, owner_id, fields_json, created_at, cover_image, content_type_options_json, channel_options_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-      projectId, input.name, input.description, input.color, req.user.id, JSON.stringify(input.fields), new Date().toISOString(),
-      input.coverImage, JSON.stringify(input.contentTypeOptions), JSON.stringify(input.channelOptions),
-    ]);
+    await db.transaction(async (tx) => {
+      const actor = await tx.get('SELECT * FROM users WHERE id = ?', [req.user.id]);
+      if (!actor || actor.disabled_at || !safeUser(actor).emailVerified) {
+        throw new HttpError(403, 'An active, verified account is required.', 'FORBIDDEN');
+      }
+      await tx.run(`INSERT INTO projects (id, name, description, color, owner_id, fields_json, created_at, cover_image, content_type_options_json, channel_options_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+        projectId, input.name, input.description, input.color, actor.id, JSON.stringify(input.fields), new Date().toISOString(),
+        input.coverImage, JSON.stringify(input.contentTypeOptions), JSON.stringify(input.channelOptions),
+      ]);
+    });
     res.status(201).json({ project: await serializeProject(await projectAccess(projectId, req.user.id)) });
   });
   app.get('/api/projects/:id', authenticated, async (req, res) => {
     res.json({ project: await serializeProject(await projectAccess(req.params.id, req.user.id)) });
   });
   app.patch('/api/projects/:id', authenticated, async (req, res) => {
-    const project = await projectAccess(req.params.id, req.user.id);
-    requireOwner(project);
     const input = projectPatchSchema.parse(req.body);
-    const fields = input.fields ?? JSON.parse(project.fields_json);
-    await db.run(`UPDATE projects SET name = ?, description = ?, color = ?, fields_json = ?, cover_image = ?, content_type_options_json = ?, channel_options_json = ? WHERE id = ?`, [
-      input.name ?? project.name, input.description ?? project.description,
-      input.color ?? project.color, JSON.stringify(fields), Object.hasOwn(input, 'coverImage') ? input.coverImage : project.cover_image,
-      JSON.stringify(uniqueTags([...JSON.parse(project.content_type_options_json || '[]'), ...(input.contentTypeOptions || [])])),
-      JSON.stringify(uniqueTags([...JSON.parse(project.channel_options_json || '[]'), ...(input.channelOptions || [])])), project.id,
-    ]);
-    if (input.fields) {
-      const tasks = await db.all('SELECT data_json FROM tasks WHERE project_id = ?', [project.id]);
-      for (const row of tasks) {
-        const task = normalizeStoredTask(JSON.parse(row.data_json));
-        task.customFields = Object.fromEntries(Object.entries(task.customFields).filter(([fieldId, value]) => {
-          const field = fields.find((entry) => entry.id === fieldId);
-          return field && (field.type === 'text' || !value || field.options.includes(value));
-        }));
-        task.updatedAt = new Date().toISOString();
-        await writeTask(task);
+    await db.transaction(async (tx) => {
+      await lockProject(req.params.id, tx);
+      const project = await projectAccess(req.params.id, req.user.id, tx);
+      requireOwner(project);
+      const fields = input.fields ?? JSON.parse(project.fields_json);
+      const contentTypeOptions = uniqueTags([...JSON.parse(project.content_type_options_json || '[]'), ...(input.contentTypeOptions || [])]);
+      const channelOptions = uniqueTags([...JSON.parse(project.channel_options_json || '[]'), ...(input.channelOptions || [])]);
+      if (contentTypeOptions.length > 200 || channelOptions.length > 200) {
+        throw new HttpError(400, 'This project has reached its limit of 200 tags.', 'TAG_LIMIT');
       }
-    }
-    res.json({ project: await serializeProject(await projectAccess(project.id, req.user.id)) });
+      await tx.run(`UPDATE projects SET name = ?, description = ?, color = ?, fields_json = ?, cover_image = ?, content_type_options_json = ?, channel_options_json = ? WHERE id = ?`, [
+        input.name ?? project.name, input.description ?? project.description,
+        input.color ?? project.color, JSON.stringify(fields), Object.hasOwn(input, 'coverImage') ? input.coverImage : project.cover_image,
+        JSON.stringify(contentTypeOptions), JSON.stringify(channelOptions), project.id,
+      ]);
+      if (input.fields) {
+        const rows = await tx.all(`SELECT data_json FROM tasks WHERE project_id = ? ORDER BY id${tx.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [project.id]);
+        for (const row of rows) {
+          const task = normalizeStoredTask(JSON.parse(row.data_json));
+          const customFields = Object.fromEntries(Object.entries(task.customFields).filter(([fieldId, value]) => {
+            const field = fields.find((entry) => entry.id === fieldId);
+            return field && (field.type === 'text' || !value || field.options.includes(value));
+          }));
+          if (JSON.stringify(customFields) !== JSON.stringify(task.customFields)) {
+            task.customFields = customFields;
+            task.updatedAt = nextUpdatedAt(task.updatedAt);
+            await writeTask(task, tx);
+          }
+        }
+      }
+    });
+    res.json({ project: await serializeProject(await projectAccess(req.params.id, req.user.id)) });
   });
   app.patch('/api/projects/:id/tags', authenticated, async (req, res) => {
-    const project = await projectAccess(req.params.id, req.user.id);
-    requireEditor(project);
     const input = projectTagSchema.parse(req.body);
     await db.transaction(async (tx) => {
+      await lockProject(req.params.id, tx);
+      const project = await projectAccess(req.params.id, req.user.id, tx);
+      requireEditor(project);
       const column = input.kind === 'contentType' ? 'content_type_options_json' : 'channel_options_json';
-      const row = await tx.get(`SELECT ${column} FROM projects WHERE id = ?${tx.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [project.id]);
-      const options = uniqueTags([...JSON.parse(row[column] || '[]'), input.value]);
+      const options = uniqueTags([...JSON.parse(project[column] || '[]'), input.value]);
       if (options.length > 200) throw new HttpError(400, 'This project has reached its limit of 200 tags.', 'TAG_LIMIT');
       await tx.run(`UPDATE projects SET ${column} = ? WHERE id = ?`, [JSON.stringify(options), project.id]);
     });
-    res.json({ project: await serializeProject(await projectAccess(project.id, req.user.id)) });
+    res.json({ project: await serializeProject(await projectAccess(req.params.id, req.user.id)) });
   });
   app.delete('/api/projects/:id', authenticated, async (req, res) => {
-    const project = await projectAccess(req.params.id, req.user.id);
-    requireOwner(project);
-    await db.run('DELETE FROM projects WHERE id = ?', [project.id]);
+    await db.transaction(async (tx) => {
+      await lockProject(req.params.id, tx);
+      const project = await projectAccess(req.params.id, req.user.id, tx);
+      requireOwner(project);
+      await tx.run('DELETE FROM projects WHERE id = ?', [project.id]);
+    });
     res.status(204).end();
   });
   app.post('/api/projects/:id/members', authenticated, async (req, res) => {
-    const project = await projectAccess(req.params.id, req.user.id);
-    requireOwner(project);
     const input = memberSchema.parse(req.body);
-    const user = await db.get('SELECT * FROM users WHERE email = ?', [input.email]);
-    if (!user || user.disabled_at || !sameScope(user, { demo_scope_id: project.owner_demo_scope_id })) {
-      throw new HttpError(404, 'This person needs to register with that email first.', 'USER_NOT_FOUND');
-    }
-    if (user.id === project.owner_id) throw new HttpError(400, 'The project owner already has full access.', 'OWNER_ROLE');
-    await db.run(
-      `INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)
-       ON CONFLICT (project_id, user_id) DO UPDATE SET role = excluded.role`,
-      [project.id, user.id, input.role],
-    );
-    res.json({ project: await serializeProject(await projectAccess(project.id, req.user.id)) });
+    await db.transaction(async (tx) => {
+      await lockProject(req.params.id, tx);
+      const project = await projectAccess(req.params.id, req.user.id, tx);
+      requireOwner(project);
+      const user = await tx.get('SELECT * FROM users WHERE email = ?', [input.email]);
+      if (!user || user.disabled_at || !sameScope(user, { demo_scope_id: project.owner_demo_scope_id })) {
+        throw new HttpError(404, 'This person needs to register with that email first.', 'USER_NOT_FOUND');
+      }
+      if (user.id === project.owner_id) throw new HttpError(400, 'The project owner already has full access.', 'OWNER_ROLE');
+      await tx.run(`INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)
+        ON CONFLICT (project_id, user_id) DO UPDATE SET role = excluded.role`, [project.id, user.id, input.role]);
+    });
+    res.json({ project: await serializeProject(await projectAccess(req.params.id, req.user.id)) });
   });
   app.delete('/api/projects/:id/members/:userId', authenticated, async (req, res) => {
-    const project = await projectAccess(req.params.id, req.user.id);
-    requireOwner(project);
-    if (req.params.userId === project.owner_id) throw new HttpError(400, 'The project owner cannot be removed.', 'OWNER_ROLE');
     await db.transaction(async (tx) => {
+      await lockProject(req.params.id, tx);
+      const project = await projectAccess(req.params.id, req.user.id, tx);
+      requireOwner(project);
+      if (req.params.userId === project.owner_id) throw new HttpError(400, 'The project owner cannot be removed.', 'OWNER_ROLE');
       await tx.run('DELETE FROM project_members WHERE project_id = ? AND user_id = ?', [project.id, req.params.userId]);
       await tx.run('DELETE FROM notifications WHERE project_id = ? AND user_id = ?', [project.id, req.params.userId]);
-      const tasks = await tx.all('SELECT data_json FROM tasks WHERE project_id = ?', [project.id]);
+      const tasks = await tx.all(`SELECT data_json FROM tasks WHERE project_id = ? ORDER BY id${tx.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [project.id]);
       for (const row of tasks) {
         const task = normalizeStoredTask(JSON.parse(row.data_json));
         if (task.assigneeIds.includes(req.params.userId)) {
           task.assigneeIds = task.assigneeIds.filter((id) => id !== req.params.userId);
-          task.updatedAt = new Date().toISOString();
+          task.updatedAt = nextUpdatedAt(task.updatedAt);
           await writeTask(task, tx);
         }
       }
     });
-    res.json({ project: await serializeProject(await projectAccess(project.id, req.user.id)) });
+    res.json({ project: await serializeProject(await projectAccess(req.params.id, req.user.id)) });
   });
   app.get('/api/projects/:id/tasks', authenticated, async (req, res) => {
     const project = await projectAccess(req.params.id, req.user.id);
@@ -325,48 +366,60 @@ export async function createApp(options = {}) {
     res.json({ tasks: rows.map((row) => ({ ...normalizeStoredTask(JSON.parse(row.data_json)), commentsCount: Number(row.comments_count) })) });
   });
   app.post('/api/projects/:id/tasks', authenticated, async (req, res) => {
-    const project = await projectAccess(req.params.id, req.user.id);
-    requireEditor(project);
     const input = taskSchema.parse(normalizeTaskInput(req.body));
-    await validateTaskForProject(input, project);
-    const now = new Date().toISOString();
-    let task = normalizeStoredTask({ ...input, id: randomUUID(), projectId: project.id, createdAt: now, updatedAt: now });
-    await db.transaction(async (tx) => {
+    const task = await db.transaction(async (tx) => {
+      await lockProject(req.params.id, tx);
+      const project = await projectAccess(req.params.id, req.user.id, tx);
+      requireEditor(project);
+      await validateTaskForProject(input, project, tx);
+      const now = new Date().toISOString();
+      let task = normalizeStoredTask({ ...input, id: randomUUID(), projectId: project.id, createdAt: now, updatedAt: now });
       task = await persistTaskTags(task, project.id, tx);
       await tx.run('INSERT INTO tasks (id, project_id, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', [
         task.id, project.id, JSON.stringify(task), now, now,
       ]);
       await notifyAssignments(task, [], req.user, project, tx);
+      return task;
     });
     res.status(201).json({ task: { ...task, commentsCount: 0 } });
   });
   app.patch('/api/tasks/:id', authenticated, async (req, res) => {
-    const row = await db.get('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
+    const { expectedUpdatedAt, ...input } = taskPatchSchema.parse(normalizeTaskInput(req.body));
+    const row = await db.get('SELECT project_id FROM tasks WHERE id = ?', [req.params.id]);
     if (!row) throw missing();
-    const project = await projectAccess(row.project_id, req.user.id);
-    requireEditor(project);
-    const input = taskPatchSchema.parse(normalizeTaskInput(req.body));
-    let task = normalizeStoredTask({ ...normalizeStoredTask(JSON.parse(row.data_json)), ...input, updatedAt: new Date().toISOString() });
-    await validateTaskForProject(task, project);
-    if (Object.hasOwn(input, 'subtasks')) input.subtasks = task.subtasks;
-    await db.transaction(async (tx) => {
-      const currentRow = await tx.get(`SELECT data_json FROM tasks WHERE id = ?${tx.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [task.id]);
+    const task = await db.transaction(async (tx) => {
+      await lockProject(row.project_id, tx);
+      const project = await projectAccess(row.project_id, req.user.id, tx);
+      requireEditor(project);
+      const currentRow = await tx.get(`SELECT data_json FROM tasks WHERE id = ?${tx.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [req.params.id]);
       if (!currentRow) throw missing();
       const currentTask = normalizeStoredTask(JSON.parse(currentRow.data_json));
-      task = normalizeStoredTask({ ...currentTask, ...input, updatedAt: task.updatedAt });
+      const count = await tx.get('SELECT COUNT(*) AS count FROM task_comments WHERE task_id = ?', [currentTask.id]);
+      if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== currentTask.updatedAt) {
+        const error = new HttpError(409, 'This task was updated by a teammate. Review their changes before saving.', 'TASK_CONFLICT');
+        error.currentTask = { ...currentTask, commentsCount: Number(count.count) };
+        throw error;
+      }
+      let task = normalizeStoredTask({ ...currentTask, ...input, updatedAt: nextUpdatedAt(currentTask.updatedAt) });
+      await validateTaskForProject(task, project, tx, currentTask.assigneeIds);
       task = await persistTaskTags(task, project.id, tx);
       await writeTask(task, tx);
       await notifyAssignments(task, currentTask.assigneeIds, req.user, project, tx);
+      return { ...task, commentsCount: Number(count.count) };
     });
-    const count = await db.get('SELECT COUNT(*) AS count FROM task_comments WHERE task_id = ?', [task.id]);
-    res.json({ task: { ...task, commentsCount: Number(count.count) } });
+    res.json({ task });
   });
   app.delete('/api/tasks/:id', authenticated, async (req, res) => {
-    const row = await db.get('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
+    const row = await db.get('SELECT project_id FROM tasks WHERE id = ?', [req.params.id]);
     if (!row) throw missing();
-    const project = await projectAccess(row.project_id, req.user.id);
-    requireEditor(project);
-    await db.run('DELETE FROM tasks WHERE id = ?', [row.id]);
+    await db.transaction(async (tx) => {
+      await lockProject(row.project_id, tx);
+      const project = await projectAccess(row.project_id, req.user.id, tx);
+      requireEditor(project);
+      const current = await tx.get(`SELECT id FROM tasks WHERE id = ?${tx.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [req.params.id]);
+      if (!current) throw missing();
+      await tx.run('DELETE FROM tasks WHERE id = ?', [current.id]);
+    });
     res.status(204).end();
   });
   app.get('/api/users', authenticated, async (req, res) => {
@@ -418,7 +471,10 @@ export async function createApp(options = {}) {
     }
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON body.', code: 'INVALID_JSON' });
     if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Request is too large.', code: 'BODY_TOO_LARGE' });
-    if (error.status) return res.status(error.status).json({ error: error.message, code: error.code ?? 'REQUEST_ERROR' });
+    if (error.status) return res.status(error.status).json({
+      error: error.message, code: error.code ?? 'REQUEST_ERROR',
+      ...(error.code === 'TASK_CONFLICT' && error.currentTask ? { currentTask: error.currentTask } : {}),
+    });
     console.error('API request failed:', error.message);
     res.status(500).json({ error: 'Something went wrong. Please try again.', code: 'SERVER_ERROR' });
   });

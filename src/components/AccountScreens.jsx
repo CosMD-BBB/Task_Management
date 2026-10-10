@@ -55,6 +55,12 @@ export function AuthScreen({ onAuthenticated, onActionComplete, Brand }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [mailMode, setMailMode] = useState('');
+  const [demoEnabled, setDemoEnabled] = useState(false);
+  useEffect(() => {
+    let current = true;
+    api('/auth/config').then(config => { if (current) setDemoEnabled(config.demoEnabled === true); }).catch(() => {});
+    return () => { current = false; };
+  }, []);
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmation: '' });
   const changeMode = (next) => { clearAction(); setMode(next); setError(''); setNotice(''); setMailMode(''); setForm((old) => ({ ...old, password: '', confirmation: '' })); if (next === 'login' && ['verify', 'reset'].includes(mode)) onActionComplete?.(); };
   const submit = async (event, demo = false) => {
@@ -94,9 +100,9 @@ export function AuthScreen({ onAuthenticated, onActionComplete, Brand }) {
     </form>
     {['login', 'register'].includes(mode) ? <>
       <p className="auth-switch">{mode === 'login' ? 'ยังไม่มีบัญชี?' : 'มีบัญชีแล้ว?'} <button onClick={() => changeMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'สร้างบัญชีใหม่' : 'เข้าสู่ระบบ'}</button></p>
-      <div className="auth-divider"><span />ลองดูก่อนได้เลย<span /></div>
+      {demoEnabled && <><div className="auth-divider"><span />ลองดูก่อนได้เลย<span /></div>
       <button className="demo-button" disabled={pending} onClick={e => submit(e, true)}><Sparkles size={17} /> ทดลองใช้ด้วยข้อมูลตัวอย่าง <ArrowRight size={16} /></button>
-      <p className="demo-note">ห้องทดลองส่วนตัว พร้อมลองจัดการทีมในหน้าผู้ดูแลระบบ</p>
+      <p className="demo-note">ห้องทดลองส่วนตัว พร้อมลองจัดการทีมในหน้าผู้ดูแลระบบ</p></>}
     </> : <button className="account-link account-back" disabled={pending} onClick={() => changeMode('login')}><ArrowLeft size={16} />กลับไปหน้าเข้าสู่ระบบ</button>}
   </AuthLayout>;
 }

@@ -10,6 +10,8 @@ export async function api(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
     error.status = response.status;
+    error.code = data.code;
+    if (data.currentTask) error.currentTask = data.currentTask;
     throw error;
   }
   return data;

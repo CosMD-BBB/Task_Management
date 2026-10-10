@@ -41,6 +41,12 @@ export function sameScope(user, owner) {
   return (user.demo_scope_id ?? null) === (owner.demo_scope_id ?? null);
 }
 
+/** Every task write gets a newer version, including writes within the same millisecond. */
+export function nextUpdatedAt(previous) {
+  const timestamp = Date.parse(previous ?? '');
+  return new Date(Math.max(Date.now(), Number.isFinite(timestamp) ? timestamp + 1 : 0)).toISOString();
+}
+
 /** Safe, repeatable migration of existing JSON tasks and durable tag catalogs. */
 export async function migrateDomainData(db) {
   await db.transaction(async (tx) => {

@@ -108,7 +108,10 @@
 .filter-button.selected { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); color: var(--accent); }
 .sort-select { font-size: 11px; color: var(--muted); padding: 9px 5px; max-width: 118px; }
 .new-task { min-height: 39px; padding: 9px 15px; font-size: 12px; border-radius: 8px; }
-.filter-panel { margin: 0 20px 14px; padding: 14px; border-radius: 9px; background: var(--surface-2); gap: 16px; }
+.filter-panel { margin: 0 20px 14px; padding: 14px; border-radius: 9px; background: var(--surface-2); gap: 16px; flex-wrap: wrap; }
+.task-refresh { flex-shrink: 0; border: 1px solid var(--border); background: var(--surface); }
+.workspace-error { margin-bottom: 18px; }
+.workspace-load-error { gap: 14px; text-align: center; }
 .filter-panel label { font-size: 11px; }
 .filter-panel select { background: var(--surface); color: var(--text); padding: 8px 10px; font-size: 11px; }
 .checkbox-label { font-weight: 450; }

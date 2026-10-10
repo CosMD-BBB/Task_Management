@@ -90,4 +90,7 @@ export const taskSchema = z.object({
   subtasks: taskShape.subtasks.default([]),
   customFields: taskShape.customFields.default({}),
 }).strict();
-export const taskPatchSchema = z.object(taskShape).partial().strict();
+export const taskPatchSchema = z.object({
+  ...taskShape,
+  expectedUpdatedAt: z.string().datetime().optional(),
+}).partial().strict();

@@ -116,36 +116,49 @@ const additiveColumns = {
 };
 const commentNotificationIndex = 'CREATE UNIQUE INDEX IF NOT EXISTS notifications_comment_user ON notifications(comment_id, user_id) WHERE comment_id IS NOT NULL';
 
+// Add a new version when a future release needs schema or stored-data changes.
+// The marker and its changes commit together, so a failed migration can be retried.
+async function migrateDatabase(db, executeSchema) {
+  await db.transaction(async (tx) => {
+    if (tx.kind === 'postgres') await tx.run('SELECT pg_advisory_xact_lock(814721900)');
+    await tx.run('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+    if (await tx.get('SELECT version FROM schema_migrations WHERE version = ?', [1])) return;
+    // Match the application mutation lock before touching application tables.
+    if (tx.kind === 'postgres') await tx.run('SELECT pg_advisory_xact_lock(814721901)');
+    await executeSchema(tx);
+    for (const [table, columns] of Object.entries(additiveColumns)) {
+      const existing = tx.kind === 'sqlite'
+        ? new Set((await tx.all(`PRAGMA table_info(${table})`)).map((column) => column.name))
+        : undefined;
+      for (const [column, definition] of Object.entries(columns)) {
+        if (existing?.has(column)) continue;
+        await tx.run(`ALTER TABLE ${table} ADD COLUMN ${tx.kind === 'postgres' ? 'IF NOT EXISTS ' : ''}${column} ${definition}`);
+      }
+    }
+    await tx.run(commentNotificationIndex);
+    await migrateDomainData({ ...tx, transaction: (callback) => callback(tx) });
+    await tx.run('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', [1, new Date().toISOString()]);
+  });
+}
+
 /** One query interface keeps local SQLite and deployed PostgreSQL behavior alike. */
 export async function openDatabase({ databasePath, databaseUrl } = {}) {
   const connectionString = databaseUrl ?? process.env.DATABASE_URL;
   if (connectionString) {
     const { Pool } = await import('pg');
     // The provider's connection URL controls TLS; do not disable certificate checks.
-    const pool = new Pool({ connectionString, max: 5 });
+    const max = Number(process.env.DATABASE_POOL_MAX ?? 3);
+    if (!Number.isInteger(max) || max < 1 || max > 10) throw Object.assign(new Error('DATABASE_POOL_MAX must be an integer from 1 to 10.'), { code: 'DATABASE_POOL_INVALID' });
+    const pool = new Pool({
+      connectionString, max, connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 10000, query_timeout: 15000, allowExitOnIdle: true,
+    });
+    // Idle connections can fail after a provider restart; do not crash the worker.
+    pool.on('error', () => console.error('An idle PostgreSQL connection became unavailable.'));
     const query = (sql, values = []) => {
       let index = 0;
       return pool.query(sql.replace(/\?/g, () => `$${++index}`), values);
     };
-    const migrationClient = await pool.connect();
-    try {
-      // Serverless instances can start together; serialize the initial schema migration.
-      await migrationClient.query('SELECT pg_advisory_lock(814721900)');
-      await migrationClient.query(schema);
-      for (const [table, columns] of Object.entries(additiveColumns)) {
-        for (const [column, definition] of Object.entries(columns)) {
-          await migrationClient.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
-        }
-      }
-      await migrationClient.query(commentNotificationIndex);
-    } catch (error) {
-      // Discard this client so a failed initialization cannot retain a session lock.
-      migrationClient.release(true);
-      await pool.end();
-      throw error;
-    }
-    await migrationClient.query('SELECT pg_advisory_unlock(814721900)');
-    migrationClient.release();
     const db = {
       kind: 'postgres',
       async get(sql, values) { return (await query(sql, values)).rows[0]; },
@@ -153,6 +166,7 @@ export async function openDatabase({ databasePath, databaseUrl } = {}) {
       async run(sql, values) { return query(sql, values); },
       async transaction(callback) {
         const client = await pool.connect();
+        let releaseError;
         const scopedQuery = (sql, values = []) => {
           let index = 0;
           return client.query(sql.replace(/\?/g, () => `$${++index}`), values);
@@ -165,34 +179,31 @@ export async function openDatabase({ databasePath, databaseUrl } = {}) {
         };
         try {
           await client.query('BEGIN');
+          // Transaction-local settings also work with transaction-pooling providers.
+          await client.query("SET LOCAL statement_timeout = '12s'");
+          await client.query("SET LOCAL lock_timeout = '5s'");
           const result = await callback(tx);
           await client.query('COMMIT');
           return result;
         } catch (error) {
-          await client.query('ROLLBACK');
+          try { await client.query('ROLLBACK'); }
+          catch (rollbackError) { releaseError = rollbackError; }
           throw error;
-        } finally { client.release(); }
+        } finally { client.release(releaseError); }
       },
       async close() { await pool.end(); },
     };
-    await migrateDomainData(db);
+    try { await migrateDatabase(db, (tx) => tx.run(schema)); }
+    catch (error) { await db.close(); throw error; }
     return db;
   }
   if (process.env.VERCEL) {
-    throw new Error('DATABASE_URL is required on Vercel. Connect a PostgreSQL database before deploying.');
+    throw Object.assign(new Error('DATABASE_URL is required on Vercel. Connect a PostgreSQL database before deploying.'), { code: 'DATABASE_URL_REQUIRED' });
   }
   const path = databasePath ?? process.env.SQLITE_PATH ?? resolve('.data/workspace.sqlite');
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const sqlite = new DatabaseSync(path);
   sqlite.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
-  sqlite.exec(schema);
-  for (const [table, columns] of Object.entries(additiveColumns)) {
-    const existing = new Set(sqlite.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
-    for (const [column, definition] of Object.entries(columns)) {
-      if (!existing.has(column)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-    }
-  }
-  sqlite.exec(commentNotificationIndex);
   let pending = Promise.resolve();
   const schedule = (callback) => {
     const result = pending.then(callback);
@@ -220,6 +231,7 @@ export async function openDatabase({ databasePath, databaseUrl } = {}) {
     }),
     close: () => schedule(() => sqlite.close()),
   };
-  await migrateDomainData(db);
+  try { await migrateDatabase(db, () => sqlite.exec(schema)); }
+  catch (error) { await db.close(); throw error; }
   return db;
 }

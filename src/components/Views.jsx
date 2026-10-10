@@ -85,7 +85,7 @@ function TaskTags({ task, kind }) {
 function TaskTagEditor({ task, kind, onEdit, canEdit, labeled = false }) {
   const content = kind === 'contentType';
   const values = content ? taskValues(task, 'contentTypes', 'contentType') : taskValues(task, 'channels', 'channel');
-  return <button className={`tm-tag-editor ${labeled ? 'tm-tag-editor-labeled' : ''}`} onClick={() => onEdit(task)} aria-label={`${canEdit ? 'แก้ไข' : 'ดู'}${content ? 'ประเภทคอนเทนต์' : 'ช่องทางโพสต์'}ของ ${task.title}`} title={canEdit ? 'เลือกได้หลายรายการ หรือเพิ่มตัวเลือกใหม่ในรายละเอียดงาน' : 'เปิดรายละเอียดงาน'}>
+  return <button className={`tm-tag-editor ${labeled ? 'tm-tag-editor-labeled' : ''}`} onClick={() => onEdit(task, { initialSection: kind })} aria-label={`${canEdit ? 'แก้ไข' : 'ดู'}${content ? 'ประเภทคอนเทนต์' : 'ช่องทางโพสต์'}ของ ${task.title}`} title={canEdit ? 'เลือกได้หลายรายการ หรือเพิ่มตัวเลือกใหม่ในรายละเอียดงาน' : 'เปิดรายละเอียดงาน'}>
     {labeled && <span className="tm-tag-editor-label">{content ? 'คอนเทนต์' : 'โพสต์ที่'}</span>}
     <span className="tm-tag-editor-values">{values.length ? <TaskTags task={task} kind={kind} /> : <span className="tm-tag-editor-empty">{canEdit ? content ? 'เลือกคอนเทนต์' : 'เลือกช่องทาง' : 'ยังไม่ระบุ'}</span>}{canEdit && <span className="tm-tag-editor-add" aria-hidden="true"><Plus size={12} /></span>}</span>
   </button>;
@@ -116,8 +116,9 @@ function TaskCommentButton({ task, onOpenComments, dragging = false }) {
   return <button type="button" className="tm-comment-button" aria-label={`ความคิดเห็นของ ${task.title}`} title={`เปิดความคิดเห็น · ${count} ข้อความ`} draggable={false} onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }} onClick={event => { event.stopPropagation(); if (!dragging) onOpenComments(task); }}><MessageSquare size={13} aria-hidden="true" /><span>{count}</span></button>;
 }
 
-function EmptyState({ hasSearch, onCreate, canEdit }) {
-  return <div className="tm-empty"><span className="tm-empty-icon"><ListTodo size={27} /></span><h3>{hasSearch ? 'ไม่พบงานที่ตรงกับการค้นหา' : 'เริ่มต้นด้วยงานแรกของทีม'}</h3><p>{hasSearch ? 'ลองเปลี่ยนคำค้น หรือเลือกแสดงงานทั้งหมด' : 'เพิ่มงาน เลือกผู้รับผิดชอบ แล้วระบุคอนเทนต์และช่องทางที่ต้องโพสต์'}</p>{canEdit && !hasSearch && <button className="tm-create-button" onClick={() => onCreate({})}><Plus size={16} />เพิ่มงานแรก</button>}</div>;
+function EmptyState({ hasSearch, hasFilters, onClearFilters, onCreate, canEdit, compact = false }) {
+  const filtered = hasSearch || hasFilters;
+  return <div className={`tm-empty ${compact ? 'tm-empty-inline' : ''}`}><span className="tm-empty-icon"><ListTodo size={27} /></span><h3>{hasSearch ? 'ไม่พบงานที่ตรงกับการค้นหา' : hasFilters ? 'ไม่พบงานที่ตรงกับตัวกรอง' : 'เริ่มต้นด้วยงานแรกของทีม'}</h3><p>{filtered ? 'ลองเปลี่ยนคำค้นหรือตัวกรอง เพื่อดูงานอื่นในโปรเจกต์' : 'เพิ่มงาน เลือกผู้รับผิดชอบ แล้วระบุคอนเทนต์และช่องทางที่ต้องโพสต์'}</p>{filtered && onClearFilters ? <button className="tm-create-button" onClick={onClearFilters}><X size={15} />ล้างตัวกรอง</button> : canEdit && !filtered && <button className="tm-create-button" onClick={() => onCreate({})}><Plus size={16} />เพิ่มงานแรก</button>}</div>;
 }
 
 function ListView({ tasks, project, onEdit, onOpenComments, onStatusChange, onCreate, canEdit, pending }) {
@@ -228,7 +229,7 @@ function CalendarView({ tasks, onEdit, onCreate, canEdit }) {
   </div>;
 }
 
-export function TaskViews({ view = 'list', tasks = [], project, onEdit, onOpenComments, onStatusChange, onCreate, canEdit = false, search = '' }) {
+export function TaskViews({ view = 'list', tasks = [], project, onEdit, onOpenComments, onStatusChange, onCreate, canEdit = false, search = '', hasFilters = false, onClearFilters }) {
   const [pending, setPending] = useState(new Set());
   const [error, setError] = useState('');
   async function changeStatus(task, status) {
@@ -240,9 +241,10 @@ export function TaskViews({ view = 'list', tasks = [], project, onEdit, onOpenCo
     finally { setPending(current => { const next = new Set(current); next.delete(task.id); return next; }); }
   }
   const props = { tasks, project, onEdit, onOpenComments: onOpenComments || onEdit, onCreate, canEdit, onStatusChange: changeStatus, pending };
+  const filteredEmpty = !tasks.length && (hasFilters || !!search);
   return <div className={`tm-views tm-view-${view}`}>
     {error && <div className="tm-view-error" role="alert"><span>{error}</span><button className="tm-icon-button" aria-label="Dismiss error" onClick={() => setError('')}><X size={14} /></button></div>}
-    {!tasks.length && view !== 'calendar' ? <EmptyState hasSearch={!!search} canEdit={canEdit} onCreate={onCreate} /> : view === 'board' ? <BoardView {...props} /> : view === 'calendar' ? <CalendarView {...props} /> : <ListView {...props} />}
+    {view === 'calendar' ? <>{filteredEmpty && <EmptyState hasSearch={!!search} hasFilters={hasFilters} onClearFilters={onClearFilters} compact />}<CalendarView {...props} /></> : !tasks.length ? <EmptyState hasSearch={!!search} hasFilters={hasFilters} onClearFilters={onClearFilters} canEdit={canEdit} onCreate={onCreate} /> : view === 'board' ? <BoardView {...props} /> : <ListView {...props} />}
   </div>;
 }
 

@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { registerSchema, loginSchema } from './validation.js';
 import { createMailer } from './mailer.js';
+import { nextUpdatedAt } from './domain.js';
 
 const email = z.string().trim().toLowerCase().email().max(254);
 const tokenInput = z.object({ token: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
@@ -113,11 +114,13 @@ export async function installAccountRoutes(app, {
     const user = await db.get('SELECT * FROM users WHERE email = ?', [input.email]);
     const valid = await bcrypt.compare(input.password, user?.password_hash ?? dummyHash);
     if (!user || !valid || user.disabled_at) throw new HttpError(401, 'Email or password is incorrect, or this account is suspended.', 'INVALID_CREDENTIALS');
-    await signIn(req, res, user);
-    const sessionUser = safeUser(user);
+    const current = await signIn(req, res, user, { expectedPasswordHash: user.password_hash });
+    const sessionUser = safeUser(current);
     res.json({ user: sessionUser, verificationRequired: !sessionUser.emailVerified, mailMode: mailer.mode });
   });
+  app.get('/api/auth/config', (req, res) => res.json({ demoEnabled: mailer.mode === 'preview' }));
   app.post('/api/auth/demo', demoLimiter ?? authLimiter, async (req, res) => {
+    if (mailer.mode !== 'preview') throw new HttpError(404, 'The requested item was not found.', 'NOT_FOUND');
     const user = await seedDemo(db);
     await signIn(req, res, user);
     res.status(201).json({ user: safeUser(await db.get('SELECT * FROM users WHERE id = ?', [user.id])), mailMode: mailer.mode });
@@ -135,9 +138,9 @@ export async function installAccountRoutes(app, {
       // A simulated preview inbox does not prove ownership of a real email address.
       const role = mailer.mode === 'resend' && !row.demo_scope_id && configuredAdmin && row.email === configuredAdmin ? 'superadmin' : row.global_role;
       await tx.run('UPDATE users SET email_verified = 1, email_verified_mode = ?, global_role = ? WHERE id = ?', [mailer.mode, role, row.id]);
-      return tx.get('SELECT * FROM users WHERE id = ?', [row.id]);
+      const current = await tx.get('SELECT * FROM users WHERE id = ?', [row.id]);
+      return signIn(req, res, current, { queryDb: tx });
     });
-    await signIn(req, res, user);
     res.json({ user: safeUser(user) });
   });
   app.post('/api/auth/resend-verification', authenticated, authLimiter, async (req, res) => {
@@ -166,7 +169,7 @@ export async function installAccountRoutes(app, {
       const user = await consumeToken(tx, input.token, 'reset');
       await tx.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, user.id]);
       await tx.run('DELETE FROM sessions WHERE user_id = ?', [user.id]);
-      await tx.run('UPDATE account_tokens SET consumed_at = ? WHERE user_id = ? AND kind = ? AND consumed_at IS NULL', [now(), user.id, 'reset']);
+      await tx.run('UPDATE account_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [now(), user.id]);
     });
     res.clearCookie(cookieName, { ...cookieOptions(req), maxAge: undefined });
     res.json({ message: 'Password updated. Log in again with your new password.' });
@@ -226,7 +229,7 @@ export async function installAccountRoutes(app, {
         if (assigneeIds.includes(target.id) || task.assigneeId === target.id) {
           task.assigneeIds = assigneeIds.filter((id) => id !== target.id);
           task.assigneeId = task.assigneeIds[0] ?? null;
-          task.updatedAt = now();
+          task.updatedAt = nextUpdatedAt(task.updatedAt);
           await tx.run('UPDATE tasks SET data_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(task), task.updatedAt, row.id]);
         }
       }
