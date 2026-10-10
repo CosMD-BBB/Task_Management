@@ -1,9 +1,9 @@
 {
-  "status": "online",
+  "status": "offline",
   "url": "https://initially-attributes-bush-spokesman.trycloudflare.com",
   "sourceCommit": "03f04cb4dde792e5f1758df055009f7d87eb06ce",
   "startedAt": "2026-10-10T03:19:40.587Z",
   "expiresAt": "2026-10-10T03:49:40.587Z",
-  "updatedAt": "2026-10-10T03:19:40.587Z",
+  "updatedAt": "2026-10-10T03:49:42.375Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
