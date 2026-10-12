@@ -1,9 +1,9 @@
 {
-  "status": "online",
+  "status": "offline",
   "url": "https://sample-democracy-affiliate-moved.trycloudflare.com",
   "sourceCommit": "6b2ed3b1bc70cb2bbfbac5e080a07d1a34a42265",
   "startedAt": "2026-10-12T06:17:16.496Z",
   "expiresAt": "2026-10-12T06:47:16.496Z",
-  "updatedAt": "2026-10-12T06:17:16.496Z",
+  "updatedAt": "2026-10-12T06:47:18.104Z",
   "storage": "Temporary SQLite on this preview runner; separate from the development database."
 }
